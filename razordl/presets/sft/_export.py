@@ -13,8 +13,7 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     wg_cls = extract_class(wg_src, "SFTWorkGroup")
 
     header = """from razordl.core.base import logging
-from razordl.core.engine.single_model.lm_workgroup import LMWorkGroup
-from razordl.core.engine.single_model.workgroup import ModelGroup as _ModelGroup
+from razordl.core.engine.single_model.workgroup import ModelGroup as _ModelGroup, WorkGroup as _WorkGroup
 from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
 
 logger = logging.getLogger(__name__)
@@ -24,6 +23,8 @@ logger = logging.getLogger(__name__)
     model_cls = replace_ident(model_cls, "SFTModelGroup", "ModelGroup")
     wg_cls = replace_ident(wg_cls, "SFTWorkGroup", "WorkGroup")
     wg_cls = replace_ident(wg_cls, "SFTModelGroup", "ModelGroup")
+    # Fix self-referential parent: "class WorkGroup(WorkGroup):" → "class WorkGroup(_WorkGroup):"
+    wg_cls = wg_cls.replace("class WorkGroup(WorkGroup):", "class WorkGroup(_WorkGroup):")
 
     return "\n".join([header, model_cls + "\n\n", wg_cls])
 

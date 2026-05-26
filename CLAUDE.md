@@ -24,7 +24,7 @@ razordl/
       common/              # shared engine lifecycle: FSDPModelGroup, EngineWorkGroup,
                            #   EngineTrainer, main(), flat_config helper
       single_model/        # supervised single-model engine (SFT/DFT/video_embedding)
-                           #   thin subclasses + LMWorkGroup (SP split, chunked LM loss)
+                           #   thin subclasses (SP split, chunked LM loss live in presets)
       on_policy_single_model/  # vLLM rollout + PPO/GRPO (reinforcement learning)
     export/        # AST-based full-mode project export (full_project, ast_utils)
   ops/             # razordl-independent utilities
@@ -51,7 +51,7 @@ The framework enforces a strict layered hierarchy.  **Engine-level concerns must
 |-------|---------------|---------|
 | `core/base/` | Abstract interfaces, stable contracts, generic serialization | `BaseTrainer`, `BaseModelGroup`, `BaseConfig`, `checkpoint_info` |
 | `core/engine/common/` | Shared training lifecycle for ALL engine variants | `FSDPModelGroup` (FSDP2/LoRA/resume/optimizer/save/load/offload), `EngineWorkGroup` (pre/post update wrapper, seeding), `EngineTrainer`, `main()`, `build_single_model_config_dict` |
-| `core/engine/<name>/` | Engine variant: thin subclasses + paradigm-specific orchestration | `single_model.LMWorkGroup` (SP split, chunked LM loss), `on_policy_single_model.WorkGroup` (rollout/reward/advantage/loss template) |
+| `core/engine/<name>/` | Engine variant: thin subclasses + paradigm-specific orchestration | `single_model.WorkGroup` (thin abstract wrapper), `on_policy_single_model.WorkGroup` (rollout/reward/advantage/loss template) |
 | `presets/<name>/` | Task-specific logic only (data format, model family, loss/reward/rollout behavior) | `build_processor()`, `build_model()`, task-specific forward/loss/backward hooks |
 
 **Rules:**
@@ -60,9 +60,10 @@ The framework enforces a strict layered hierarchy.  **Engine-level concerns must
   - `FSDPModelGroup.__init_subclass__` auto-wraps `build_model()` with `_post_build_model()` (adapter, resume, FSDP2/SP).
   - `EngineWorkGroup.__init_subclass__` auto-wraps `update_step()` (or `_run_update_step()` for on-policy) with `_pre_update_step()` (seeding, offload load) and `_post_update_step()` (optimizer step, grad clip, offload).
 - Presets may implement task-specific forward/loss/backward behavior, but must **not** perform optimizer step, gradient clipping, parameter offloading, checkpoint save/load, or shared seeding.  Those are handled by the engine wrapper.
-- LM-style presets (SFT/DFT) should inherit `single_model.LMWorkGroup` and only customize model loading and/or criterion.  On-policy presets should prefer the `rollout()` / `compute_reward()` / `compute_advantage()` / `compute_loss()` hooks; override `_run_update_step()` only when the task truly needs a different backward schedule (for example chunked GRPO loss).
+- LM-style presets (SFT/DFT) define their own `update_step` and loss computation (SP split, next-token CE, chunked loss) in the preset layer; the engine only provides the abstract `WorkGroup` + lifecycle wrappers.  On-policy presets should prefer the `rollout()` / `compute_reward()` / `compute_advantage()` / `compute_loss()` hooks; override `_run_update_step()` only when the task truly needs a different backward schedule (for example chunked GRPO loss).
 - **Single point of change**: if FSDP2, LoRA, resume, save/load, grad-clip, offload, or per-step seeding needs to change, edit `engine/common/`.  Engine variants (`single_model/`, `on_policy_single_model/`) are thin and only carry paradigm differences.
-- LM-specific behavior (next-token CE, SP token split, chunked logits loss) lives in `engine/single_model/lm_workgroup.py` + `ops/loss/distributed.py`, not in presets.
+- **Engine must NOT contain training logic.** Concrete forward passes, loss functions (CE, contrastive, etc.), SP split, chunked-loss monkey-patching, backward calls — these all belong in **presets** (task-specific) or **ops** (stateless utilities shared across presets). Engine is purely abstract framework: lifecycle wrappers, distributed orchestration, training loop structure. If you write ``torch.nn.functional.cross_entropy`` (or any other concrete loss) in an engine file, it is in the wrong layer. This is the single most important architectural boundary in the project — we moved ``LMWorkGroup`` out of engine to fix this exact violation.
+
 
 ### Dependency direction: tree, not graph
 
@@ -159,7 +160,7 @@ def export_full_project(preset_pkg_dir, project_dir, razordl_root):
     return export_full_project_for_engine(
         preset_pkg_dir, project_dir, razordl_root,
         engine_name="single_model",
-        engine_files=("main.py", "trainer.py", "workgroup.py", "lm_workgroup.py", "config.py", "dataset.py"),
+        engine_files=("main.py", "trainer.py", "workgroup.py", "config.py", "dataset.py"),
     )
 ```
 
@@ -234,9 +235,10 @@ AST helpers live in `razordl/core/export/ast_utils.py` and are reused by preset 
 - **PyTorch minimum version**: >=2.6.0 (FSDP2 API stabilized), enforced in pyproject.toml
 - **Architecture hierarchy is absolute**: `base → engine/common → engine variant → preset`.  Presets inherit engine variant classes, never `engine/common/*` or `base/*` directly.  Engine bugs are fixed in `engine/common/` (single source of truth for FSDP/LoRA/resume/optimizer/grad-clip/offload/seeding); engine variants are thin paradigm-specific wrappers.
 - **Shared engine logic has ONE home: `engine/common/`.**  Never duplicate FSDP2/LoRA/resume/optimizer/save/load code across engine variants — if a variant needs to vary, expose a hook in `engine/common/`.  Never let one engine variant import from another (e.g. `on_policy_single_model` importing from `single_model`) — promote shared code to `engine/common/` or `ops/`.
+- **Engine is pure framework, never training logic.** Engine files under `core/engine/` contain only abstract lifecycle infrastructure — wrappers, training loop structure, distributed orchestration, optimizer step, checkpointing. They must **never** contain concrete forward passes, loss functions (cross-entropy, contrastive, etc.), SP split logic, chunked-loss implementations, or backward calls. Those go in **presets** (task-specific training recipes) or **ops** (stateless utilities). The `LMWorkGroup` that previously lived in `engine/single_model/lm_workgroup.py` was a violation of this rule — it was deleted and all its logic moved into `presets/sft/workgroup.py::SFTWorkGroup`. Before adding any code to an engine file, ask: "Is this a specific training behavior, or is it generic infrastructure?" If the answer is "specific training behavior," it belongs in a preset.
 - **Shared YAML key mapping has ONE home: `engine/common/flat_config.py::build_single_model_config_dict`.**  Presets call it with their data-config + defaults; never copy the trainer/optimizer/LoRA mapping into a preset.
 - **Checkpoint marker is `checkpoint_info.json`** (rich JSON metadata), not the legacy `complete` file.  All checkpoint detection paths (`is_complete`, `get_resume_checkpoint_dir`, `get_resume_state`) accept both for backwards compatibility, but new saves only write `checkpoint_info.json`.
-- **Auto post-init wrapping uses a depth counter** (`AutoSetModelGroupNameWorkGroup` in `core/base/workgroup.py`): every subclass `__init__` is wrapped, but `__post_init__` fires only when the outermost wrapper returns (depth → 0).  This is critical because subclasses like `LMWorkGroup` create `self.model_group` AFTER `super().__init__()` returns — a naive one-shot guard would fire `__post_init__` before the attribute exists and `auto_set_model_group_name` would silently walk an empty set.
+- **Auto post-init wrapping uses a depth counter** (`AutoSetModelGroupNameWorkGroup` in `core/base/workgroup.py`): every subclass `__init__` is wrapped, but `__post_init__` fires only when the outermost wrapper returns (depth → 0).  This is critical because subclasses like `SFTWorkGroup` create `self.model_group` AFTER `super().__init__()` returns — a naive one-shot guard would fire `__post_init__` before the attribute exists and `auto_set_model_group_name` would silently walk an empty set.
 - **Distribution metrics use `Reducible` leaves.**  Never pre-aggregate min/max/std/sum into a scalar on a rank and ship that — `_summarize_step_info` will then average those scalars across ranks and produce values outside the true sample set (e.g. GRPO `reward.max=1.0` when rewards are `{0.0, 0.5, 1.5}`).  Use `DistStats.from_tensor(t)` (or another `Reducible` subclass in `core/base/metrics.py`) so the aggregator can pool exactly.  Engine-layer gather happens only in `BaseTrainer.run_training_loop`; do not re-add `all_gather_object` in `EngineTrainer.update_step` or `DistStats.n` will be inflated by `world_size`.
 - **Frozen ModelGroups are never persisted.**  `FSDPModelGroup.save_model_and_processor()` and `save_checkpoint()` early-return when `is_trainable=False`.  Reference / teacher models therefore do NOT appear in `checkpoint_*/` subdirs — only `policy_model_group/` does.  When designing new on-policy presets, reuse the engine's `reference_model_group` slot for any frozen counterpart (teacher, critic, etc.) rather than introducing a parallel `model_group_config`.
 - **OPD requires `data_config.teacher_model`.**  Student and teacher MUST share the same tokenizer (vocab + special-token ids).  `OPDWorkGroup.__init__` enforces this with `_validate_tokenizer_compat()`.  The teacher path lives on `data_config` (not a second `model_group_config`); `OPDWorkGroup.__init__` deep-copies the policy config and overrides `model_path`/`processor_path`/`is_trainable=False` for the teacher.
