@@ -1,0 +1,77 @@
+# OPD preset configuration — PG On-Policy Distillation
+#
+# Distills a stronger teacher into a smaller student on GSM8K math prompts.
+# The student samples its own reasoning (vLLM rollout); the teacher provides
+# per-token log-probs that become the (negative) advantage in a PPO clipped
+# objective.  No reference-KL penalty term is added.
+#
+# Required keys:
+#   model          — student (trainable)
+#   teacher_model  — teacher (frozen, no optimizer)
+#   data_path      — path to a directory containing train.jsonl
+#
+# Student and teacher MUST share the same tokenizer (vocab + special tokens).
+# Qwen3 family is a safe choice: Qwen3-0.6B as student, Qwen3-1.7B / Qwen3-4B
+# as teacher.
+
+# ------------------- [common] -------------------
+model: Qwen/Qwen3-0.6B
+teacher_model: Qwen/Qwen3-1.7B
+# Optional override; empty string means use the student tokenizer (student and
+# teacher MUST share the same tokenizer — vocab + special tokens).
+teacher_processor_path: ""
+
+# Dataset path — populated automatically when the project is generated.
+data_path: ./data
+output_dir: ./output
+
+# OPD-specific knobs
+batch_size: 2
+loss_mode: k1            # one of: k1 / k2 / k3 / abs / mse / low_var_kl
+loss_max_clamp: 10.0
+log_prob_min_clamp: -20.0
+clip_eps: 0.2
+max_completion_length: 2048
+temperature: 0.7
+top_p: 0.9
+top_k: 50
+
+# Data
+max_length: 1024
+
+# LoRA (disabled by default — LoRA weight sync not yet supported in vLLM V1)
+use_adapter: false
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.05
+lora_target_modules: [q_proj, v_proj, k_proj, o_proj]
+
+# Optimizer
+lr: 5.0e-6
+weight_decay: 0.01
+max_grad_norm: 1.0
+grad_accum: 2
+
+# Training
+num_epochs: 2
+num_workers: 2
+seed: 42
+
+# Logging & Checkpointing
+log_steps: 1
+save_steps: 50
+save_ckpt_steps: 50
+auto_resume: true
+compute_checksums: false
+
+# ------------------- [advanced] -------------------
+enable_gradient_checkpointing: true
+offload_param: false
+offload_optimizer: false
+chunked_loss: false
+chunk_size: 2048
+sp_size: 1
+use_bf16: true
+
+ray_kwargs:
+  ray_init: {}

@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: sync-requirements
+        name: Sync preset requirements from pyproject.toml
+        entry: python scripts/sync_requirements.py
+        language: system
+        files: ^pyproject\.toml$
+        pass_filenames: false
+        verbose: true

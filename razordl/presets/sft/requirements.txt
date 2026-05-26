@@ -1,0 +1,23 @@
+# Auto-generated from pyproject.toml
+# Do not edit manually. Run: python scripts/sync_requirements.py
+
+torch>=2.6.0
+transformers>=4.40.0
+accelerate>=0.30.0
+tensordict>=0.3.0
+ray[train]>=2.10.0
+aiohttp-cors>=0.7.0
+grpcio>=1.50.0
+opencensus>=0.11.0
+opentelemetry-api>=1.20.0
+opentelemetry-exporter-prometheus>=0.40b0
+opentelemetry-proto>=1.20.0
+prometheus-client>=0.17.0
+omegaconf>=2.3.0
+pydantic>=2.0.0
+safetensors>=0.4.0
+tqdm>=4.65.0
+numpy>=1.24.0
+datasets>=2.14.0
+pyarrow>=14.0.0,<16.0.0
+peft>=0.11.0

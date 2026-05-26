@@ -1,0 +1,86 @@
+# ============================================================
+# RazorDL Video-Embedding Training Configuration
+# Contrastive learning for video-text retrieval/embedding.
+# ============================================================
+
+
+# ============================================================
+# [常用]
+# ============================================================
+
+# ---- Model & Data ----
+model: OpenSearch-AI/Ops-MM-embedding-v1-2B   # HF multimodal model path
+data_path: ./data                               # train.jsonl + video/ 目录
+output_dir: ./output                            # checkpoint & log 输出目录
+
+# ---- Training ----
+lr: 1.0e-4                                      # 学习率。常用: 5e-5 ~ 1e-4
+batch_size: 1                                   # 每 GPU micro batch
+num_epochs: 1                                   # 训练轮数
+
+# ---- Video & Text ----
+query_system_prompt: ""                         # query 的 system prompt
+video_system_prompt: ""                         # video 的 system prompt
+query_max_length: 1024                          # query 最大序列长度
+video_max_length: 32768                         # video 最大序列长度
+document_group_size: 8                          # 每个 query 配对的视频数 (pos+neg)
+temperature: 0.05                               # 对比学习 temperature
+nframes: 8                                       # 视频采样帧数（需与 video_base64/nframes_{nframes}/ 对应）
+
+# ---- LoRA ----
+use_adapter: true                               # 是否启用 LoRA
+task_type: FEATURE_EXTRACTION                   # PEFT task type (FEATURE_EXTRACTION for embedding)
+lora_r: 8                                       # LoRA rank
+lora_alpha: 16                                  # 缩放因子
+lora_dropout: 0.05                              # dropout
+lora_target_modules:                            # 加 LoRA 的层
+  - q_proj
+  - v_proj
+  - k_proj
+  - o_proj
+
+# ---- Optimizer ----
+grad_accum: 8                                   # 梯度累积
+weight_decay: 0.01                              # 权重衰减
+max_grad_norm: 1.0                              # 梯度裁剪
+
+
+# ============================================================
+# [不常用] 默认值即可，知道在哪就行
+# ============================================================
+
+# ---- Data & Tokenization ----
+enable_gradient_checkpointing: false            # 梯度检查点
+sp_size: 1                                      # 序列并行
+lazy_tokenize: false                            # 实时 tokenize
+dataset_processor_path: ""                      # 自定义 processor 路径
+num_workers: 2                                  # DataLoader worker 数
+
+# ---- Memory Offloading ----
+offload_param: false                            # CPU offload 模型参数
+offload_optimizer: false                        # CPU offload 优化器状态
+
+# ---- Logging & Checkpointing ----
+log_steps: 10                                   # 每 N *grad_accum* 步打印日志
+save_steps: 100                                 # 每 N *grad_accum* 步保存模型
+save_ckpt_steps: 500                            # 每 N *grad_accum* 步保存完整 checkpoint
+auto_resume: true                               # 自动从最新 checkpoint 恢复
+compute_checksums: false                        # 保存 checkpoint 时计算 SHA256（增加 IO，可选完整性校验）
+
+# ---- Adapter Advanced ----
+adapter_path: null                              # 加载预训练 adapter
+modules_to_save: null                           # 额外全参数训练的模块
+
+# ---- Infrastructure ----
+use_bf16: true                                  # bfloat16
+seed: 42                                        # 随机种子
+
+# ---- Custom ----
+optimizer_path: null                            # 自定义优化器
+scheduler_path: null                            # 自定义 scheduler
+resume_checkpoint_dir: null                     # 手动指定恢复 checkpoint
+ray_kwargs: {}                                  # ray.init() 额外参数
+
+# ---- Multi-Model (单模型不用管) ----
+model_group_name: null
+worker_group_name: null

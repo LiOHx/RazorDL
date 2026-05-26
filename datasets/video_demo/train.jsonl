@@ -1,0 +1,3 @@
+{"query": "一个人在办公室使用电脑工作", "pos_video_ids": ["000000.mp4"], "neg_video_ids": ["000001.mp4"], "query_language": "zh"}
+{"query": "A dog playing in the park", "pos_video_ids": ["000000.mp4"], "neg_video_ids": ["000001.mp4"], "query_language": "en"}
+{"query": "夜晚城市街道的夜景", "pos_video_ids": ["000000.mp4"], "neg_video_ids": ["000001.mp4"], "query_language": "zh"}

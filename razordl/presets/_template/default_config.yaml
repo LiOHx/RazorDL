@@ -1,0 +1,80 @@
+# ============================================================
+# RazorDL NEW Training Configuration            # [改] preset 名
+# [改] 一句描述你的训练方法
+# ============================================================
+
+
+# ============================================================
+# [常用]
+# ============================================================
+
+# ---- Model & Data ----
+model: Qwen/Qwen3-4B-Instruct          # HF model 名或本地路径
+data_path: ./data                       # train.json / train.jsonl 目录
+output_dir: ./output                    # checkpoint & log 输出目录
+
+# ---- Training ----
+lr: 5.0e-5                              # 学习率
+batch_size: 1                           # 每 GPU micro batch
+num_epochs: 3                           # 训练轮数
+max_length: 4096                        # 最大序列长度
+
+# ---- LoRA ----
+use_adapter: true                       # 是否启用 LoRA
+lora_r: 8                               # LoRA rank
+lora_alpha: 16                          # 缩放因子。通常设成 2 * lora_r
+lora_dropout: 0.05                      # dropout
+lora_target_modules:                    # 加 LoRA 的层
+  - q_proj
+  - v_proj
+  - k_proj
+  - o_proj
+
+# ---- Optimizer ----
+grad_accum: 2                           # 梯度累积
+weight_decay: 0.01                      # 权重衰减
+max_grad_norm: 1.0                      # 梯度裁剪
+
+
+# ============================================================
+# [不常用] 默认值即可，知道在哪就行
+# ============================================================
+
+# ---- [改] 你的 preset 特有参数 ----
+# new_extra_param: 0.0                   # [改] 描述你的特有配置
+
+# ---- Data & Tokenization ----
+enable_gradient_checkpointing: false    # 梯度检查点
+sp_size: 1                              # 序列并行。1=关, 2/4/8=开
+# chunked_loss 如果你的 loss 需要完整 logits 则强制 false
+lazy_tokenize: false
+dataset_processor_path: ""
+num_workers: 2
+
+# ---- Memory Offloading ----
+offload_param: false
+offload_optimizer: false
+
+# ---- Logging & Checkpointing ----
+log_steps: 10
+save_steps: 100
+save_ckpt_steps: 500
+auto_resume: true
+
+# ---- Adapter Advanced ----
+adapter_path: null
+modules_to_save: null
+
+# ---- Infrastructure ----
+use_bf16: true
+seed: 42
+
+# ---- Custom ----
+optimizer_path: null
+scheduler_path: null
+resume_checkpoint_dir: null
+ray_kwargs: {}
+
+# ---- Multi-Model (单模型不用管) ----
+model_group_name: null
+worker_group_name: null

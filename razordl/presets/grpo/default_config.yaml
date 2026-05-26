@@ -1,0 +1,62 @@
+# GRPO preset configuration
+# Train an LLM with Group Relative Policy Optimization on math problems.
+#
+# Default values below are tuned for Qwen3-0.6B on GSM8K with a single GPU.
+# Adjust model / data_path for your setup.
+
+# ------------------- [common] -------------------
+model: Qwen/Qwen3-0.6B
+# Dataset path — populated automatically when the project is generated.
+# If you want to use your own data, point this to your data directory.
+data_path: ./data
+output_dir: ./output
+
+# GRPO-specific
+batch_size: 2
+group_size: 8
+kl_coef: 0.001
+clip_eps: 0.2
+max_completion_length: 2048
+temperature: 0.9
+top_p: 0.9
+top_k: 50
+
+# Data
+max_length: 512
+
+# LoRA (disabled by default — LoRA weight sync not yet supported in vLLM V1)
+use_adapter: false
+lora_r: 8
+lora_alpha: 16
+lora_dropout: 0.05
+lora_target_modules: [q_proj, v_proj, k_proj, o_proj]
+
+# Optimizer
+lr: 1.0e-06
+weight_decay: 0.01
+max_grad_norm: 1.0
+grad_accum: 8
+
+# Training
+num_epochs: 2
+num_workers: 2
+seed: 42
+
+# Logging & Checkpointing
+log_steps: 1
+save_steps: 5
+save_ckpt_steps: 5
+auto_resume: true
+compute_checksums: false  # 保存 checkpoint 时计算 SHA256（增加 IO，可选完整性校验）
+
+# ------------------- [advanced] -------------------
+enable_gradient_checkpointing: true
+offload_param: false
+offload_optimizer: false
+chunked_loss: false
+chunk_size: 2048
+sp_size: 1
+use_bf16: true
+
+ray_kwargs:
+  ray_init: {}
