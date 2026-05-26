@@ -1,0 +1,82 @@
+# ============================================================
+# RazorDL DFT Training Configuration
+# DFT (Direct Fine-Tuning): confidence-weighted cross-entropy.
+#   loss = sum(ce_loss * exp(-ce_loss)) / total_valid_tokens
+# ============================================================
+
+
+# ============================================================
+# [常用]
+# ============================================================
+
+# ---- Model & Data ----
+model: Qwen/Qwen3-4B-Instruct          # HF model 名或本地路径。常用: Qwen3-4B, Llama-3.1-8B
+data_path: ./data                       # train.json / train.jsonl 目录
+output_dir: ./output                    # checkpoint & log 输出目录
+
+# ---- Training ----
+lr: 5.0e-5                              # 学习率。常用: 1e-5 ~ 5e-5
+batch_size: 1                           # 每 GPU micro batch。常用: 1~4（受显存限制）
+num_epochs: 3                           # 训练轮数。常用: 1~3
+max_length: 4096                        # 最大序列长度。常用: 1024~8192
+
+# ---- LoRA ----
+use_adapter: true                       # 是否启用 LoRA。true=省显存（推荐）, false=全参数
+lora_r: 8                               # LoRA rank。常用: 4, 8, 16, 32, 64
+lora_alpha: 16                          # 缩放因子。通常设成 2 * lora_r
+lora_dropout: 0.05                      # dropout。常用: 0.0 ~ 0.1
+lora_target_modules:                    # 加 LoRA 的层。常用: [q_proj,v_proj,k_proj,o_proj]
+  - q_proj
+  - v_proj
+  - k_proj
+  - o_proj
+
+# ---- Optimizer ----
+grad_accum: 2                           # 梯度累积。常用: 1~8（显存小就设大）
+weight_decay: 0.01                      # 权重衰减。常用: 0.0 ~ 0.1
+max_grad_norm: 1.0                      # 梯度裁剪。常用: 0.5~2.0，null=不裁剪
+
+
+# ============================================================
+# [不常用] 默认值即可，知道在哪就行
+# ============================================================
+
+# ---- DFT-specific ----
+dft_mini_scale: 0.0                     # 最小置信度权重。0=不限, >0=截断低置信度 token
+
+# ---- Data & Tokenization ----
+enable_gradient_checkpointing: false    # 梯度检查点。true=省显存但慢（长文本/大模型显存不够时开）
+sp_size: 1                              # 序列并行。常用: 1(关), 2, 4, 8（必须整除 attention_heads）
+# chunked_loss 在 DFT 中强制关闭（需要完整 loss 计算置信度权重）
+lazy_tokenize: false                    # true=实时 tokenize（省内存但慢）。false=默认离线预处理
+dataset_processor_path: ""              # tokenizer 路径（和 model 不同时才填）
+num_workers: 2                          # DataLoader worker 数。常用: 0~8
+
+# ---- Memory Offloading ----
+offload_param: false                    # CPU offload 模型参数。true=显存严重不足时开
+offload_optimizer: false                # CPU offload 优化器状态。true=显存严重不足时开
+
+# ---- Logging & Checkpointing ----
+log_steps: 10                           # 每 N *grad_accum* 步打印日志
+save_steps: 100                         # 每 N *grad_accum* 步保存模型（adapter）
+save_ckpt_steps: 500                    # 每 N *grad_accum* 步保存完整 checkpoint（含优化器）
+auto_resume: true                       # 自动从最新 checkpoint 恢复。true=推荐（防中断）
+
+# ---- Adapter Advanced ----
+adapter_path: null                      # 加载预训练 adapter 路径。null=从头训练
+modules_to_save: null                   # 额外全参数训练的模块。常用: ["embed_tokens", "lm_head"]
+
+# ---- Infrastructure ----
+use_bf16: true                          # bfloat16。true=现代 GPU 自动支持
+seed: 42                                # 随机种子
+
+# ---- Custom ----
+optimizer_path: null                    # 自定义优化器类路径。null=默认 AdamW
+scheduler_path: null                    # 自定义 scheduler 类路径。null=无
+resume_checkpoint_dir: null             # 手动指定恢复 checkpoint。null=auto_resume 自动找
+ray_kwargs: {}                          # ray.init() 额外参数。常用: {} 或 {"address": "auto"}
+compute_checksums: false                # 保存 checkpoint 时计算每个模型文件的 SHA256（增加 IO，可选完整性校验）
+
+# ---- Multi-Model (单模型不用管) ----
+model_group_name: null                  # 多模型训练时命名
+worker_group_name: null                 # 多模型训练时命名

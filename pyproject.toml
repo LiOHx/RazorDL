@@ -1,0 +1,114 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "razordl"
+version = "0.1.0"
+description = "A flexible distributed deep learning training framework for LLMs and multimodal models"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "LiOHx", email = "LiOHx@users.noreply.github.com"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.6.0",
+    "transformers>=4.40.0",
+    "accelerate>=0.30.0",
+    "tensordict>=0.3.0",
+
+    # Ray train + dashboard deps for full State API support.
+    # ray[train] alone does not include dashboard dependencies.
+    # Ray Train v2's PlacementGroupCleaner relies on the State API,
+    # which requires the dashboard HTTP server.
+    # Without the deps below, dashboard starts in --minimal mode,
+    # State API is unavailable, and PlacementGroupCleaner spams
+    # "State API may be temporarily unavailable" every second.
+    "ray[train]>=2.10.0",
+    "aiohttp-cors>=0.7.0",
+    "grpcio>=1.50.0",
+    "opencensus>=0.11.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-exporter-prometheus>=0.40b0",
+    "opentelemetry-proto>=1.20.0",
+    "prometheus-client>=0.17.0",
+
+    "omegaconf>=2.3.0",
+    "pydantic>=2.0.0",
+    "safetensors>=0.4.0",
+    "tqdm>=4.65.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+sft = [
+    "datasets>=2.14.0",
+    "pyarrow>=14.0.0,<16.0.0",
+    "peft>=0.11.0",
+]
+video_embedding = [
+    "datasets>=2.14.0",
+    "peft>=0.11.0",
+    "decord>=0.6.0",
+    "opencv-python>=4.8.0",
+    "Pillow>=10.0.0",
+    "qwen_vl_utils>=0.0.8",
+    "torchvision>=0.21.0",
+]
+grpo = [
+    "datasets>=2.14.0",
+    "peft>=0.11.0",
+]
+opd = [
+    "datasets>=2.14.0",
+    "peft>=0.11.0",
+]
+xformers = [
+    "xformers>=0.0.25",
+]
+all = [
+    "datasets>=2.14.0",
+    "pyarrow>=14.0.0,<16.0.0",
+    "peft>=0.11.0",
+    "xformers>=0.0.25",
+    "decord>=0.6.0",
+    "opencv-python>=4.8.0",
+    "Pillow>=10.0.0",
+    "qwen_vl_utils>=0.0.8",
+    "torchvision>=0.21.0",
+]
+
+[project.scripts]
+razordl = "razordl.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/LiOHx/RazorDL"
+Repository = "https://github.com/LiOHx/RazorDL"
+Issues = "https://github.com/LiOHx/RazorDL/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["razordl*"]
+exclude = [
+    "example*",
+    "custom_work*",
+    "tests*",
+]
+
+[tool.setuptools.package-data]
+razordl = [
+    "presets/**/default_config.yaml",
+    "presets/**/data/**/*",
+]

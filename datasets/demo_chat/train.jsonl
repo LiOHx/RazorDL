@@ -1,0 +1,5 @@
+{"messages": [{"role": "user", "content": "你好，请介绍一下你自己。"}, {"role": "assistant", "content": "你好！我是一个AI助手，可以帮助你回答问题、写作、编程等多种任务。有什么我可以帮你的吗？"}]}
+{"messages": [{"role": "user", "content": "1+1等于几？"}, {"role": "assistant", "content": "1+1等于2。"}]}
+{"messages": [{"role": "user", "content": "请用一句话总结机器学习的概念。"}, {"role": "assistant", "content": "机器学习是让计算机从数据中学习规律并做出预测或决策的技术。"}]}
+{"messages": [{"role": "user", "content": "Translate 'Hello world' to Chinese."}, {"role": "assistant", "content": "'Hello world' 的中文翻译是 '你好，世界'。"}]}
+{"messages": [{"role": "system", "content": "You are a helpful coding assistant."}, {"role": "user", "content": "Write a Python function to add two numbers."}, {"role": "assistant", "content": "```python\ndef add(a, b):\n    return a + b\n```"}]}
