@@ -13,7 +13,6 @@ def export_full_project(preset_pkg_dir: str, project_dir: str, razordl_root: str
             "main.py",
             "trainer.py",
             "workgroup.py",
-            "lm_workgroup.py",
             "config.py",
             "dataset.py",
         ),

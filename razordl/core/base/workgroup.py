@@ -166,7 +166,7 @@ class AutoSetModelGroupNameWorkGroup(BaseWorkGroup):
         # outermost __init__ in the chain returns.
         #
         # The pitfall: a subclass's __init__ may call super().__init__()
-        # before assigning its own attributes (e.g. LMWorkGroup creates
+        # before assigning its own attributes (e.g. SFTWorkGroup creates
         # self.model_group AFTER super().__init__()).  If the inner wrapper
         # fires __post_init__ right after super() returns, the model_group
         # attribute does not yet exist and auto_set_model_group_name() walks
