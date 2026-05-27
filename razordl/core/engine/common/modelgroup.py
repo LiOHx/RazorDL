@@ -238,6 +238,9 @@ class FSDPModelGroup(BaseModelGroup):
         return self._resume_optimizer_checkpoint(optimizer)
 
     def _resume_optimizer_checkpoint(self, optimizer):
+        if getattr(self.config.trainer_config, 'init_from', None):
+            logger.info("[INIT_FROM] Skipping optimizer state — starting fresh")
+            return optimizer
         optimizer_path = self._find_checkpoint_file("optimizer.pt")
         if optimizer_path:
             try:

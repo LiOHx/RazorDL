@@ -221,20 +221,49 @@ def export_full_project_for_engine(
     created.append("src/workgroup.py")
 
     main_code = f"""import os
+import sys
 import yaml
 
 from config import {config_class}
 from dataset import Dataset, Collator
 from workgroup import WorkGroup
 from engine.main import main
+from ops.snapshot import diff_experiments, get_latest_experiment, scan_experiments
 
 if __name__ == "__main__":
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
-    with open(config_path, "r") as f:
-        flat_config = yaml.safe_load(f)
+    if len(sys.argv) > 1 and sys.argv[1] == "diff":
+        left_arg = sys.argv[2] if len(sys.argv) > 2 else None
+        right_arg = sys.argv[3] if len(sys.argv) > 3 else None
 
-    config = {config_class}.from_flat_dict(flat_config)
-    main(config, WorkGroup, Dataset, Collator)
+        if left_arg is None and right_arg is None:
+            outputs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "outputs")
+            latest = get_latest_experiment(outputs_dir)
+            if latest is None:
+                print("No experiments found under outputs/")
+                sys.exit(1)
+            left_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            right_dir = latest
+            left_label = "当前项目"
+            right_label = os.path.basename(latest)
+        elif left_arg is not None and right_arg is None:
+            left_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            right_dir = os.path.abspath(left_arg)
+            left_label = "当前项目"
+            right_label = os.path.basename(left_arg.rstrip("/"))
+        else:
+            left_dir = os.path.abspath(left_arg)
+            right_dir = os.path.abspath(right_arg)
+            left_label = os.path.basename(left_arg.rstrip("/"))
+            right_label = os.path.basename(right_arg.rstrip("/"))
+
+        print(diff_experiments(left_dir, right_dir, left_label, right_label))
+    else:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
+        with open(config_path, "r") as f:
+            flat_config = yaml.safe_load(f)
+
+        config = {config_class}.from_flat_dict(flat_config)
+        main(config, WorkGroup, Dataset, Collator)
 """
     with open(os.path.join(src_dir, "main.py"), "w") as f:
         f.write(main_code)

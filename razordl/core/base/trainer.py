@@ -1,12 +1,15 @@
-from abc import abstractmethod
-import torch
-from torch.utils.data import Dataset
-from tensordict.tensordict import TensorDict
 import os
 import json
+import random
 import shutil
 import time
+from abc import abstractmethod
+
+import numpy as np
+import torch
 from ray.train.torch import prepare_data_loader
+from tensordict.tensordict import TensorDict
+from torch.utils.data import Dataset
 
 from razordl.core.base.dataloader import ResumeState, TrainingDataLoader
 from razordl.core.base.workgroup import BaseWorkGroup
@@ -71,6 +74,20 @@ def _safe_mean(values):
     return sum(values) / len(values)
 
 
+def set_seed(seed: int):
+    """Seed all random generators for deterministic training.
+
+    Call this before model initialization and at the start of every
+    training step.  Uses the same seed across Python, NumPy, and PyTorch
+    (CPU + CUDA).
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 class BaseTrainer():
 
     def __init__(self, config: BaseConfig):
@@ -88,8 +105,11 @@ class BaseTrainer():
         self._resumed_from: str | None = None
         self._last_step_info: dict = {}
 
-        if self.trainer_config.auto_resume:
-            self.get_resume_checkpoint_dir()
+        self.get_resume_checkpoint_dir()
+
+        # Seed before model init for deterministic weight initialization
+        set_seed(self.trainer_config.seed)
+
         self.train_dataset: Dataset =  None
         self.train_collator = None
         self.prepare_data_and_workgroup()
@@ -124,11 +144,10 @@ class BaseTrainer():
 
 
     def get_resume_state(self):
-        if not self.config.trainer_config.auto_resume:
-            logger.info(f"[RESUME] Auto-resume disabled, starting from scratch")
-            logger.info(f"[RESUME] Seed: {self.trainer_config.seed}")
+        if getattr(self.config.trainer_config, 'init_from', None):
+            logger.info("[INIT_FROM] Starting from step 0 (forked from checkpoint)")
+            logger.info("[INIT_FROM] Seed: %s", self.trainer_config.seed)
             return ResumeState.from_seed(self.trainer_config.seed)
-
         if self.config.trainer_config.resume_checkpoint_dir:
             if not self._is_complete_checkpoint(self.config.trainer_config.resume_checkpoint_dir):
                 raise ValueError(
@@ -291,7 +310,7 @@ class BaseTrainer():
         if local_rank == 0:
             tqdm_loader = tqdm(
                 data_loader,
-                total=len(data_loader),
+                total=len(data_loader) + self.completed_step,
                 initial=self.completed_step,
             )
         else:

@@ -12,7 +12,7 @@
 # ---- Model & Data ----
 model: Qwen/Qwen3-4B-Instruct          # HF model 名或本地路径。常用: Qwen3-4B, Llama-3.1-8B
 data_path: ./data                       # train.json / train.jsonl 目录
-output_dir: ./output                    # checkpoint & log 输出目录
+outputs_dir: ./outputs               # 实验输出父目录；框架自动生成时间戳子目录
 
 # ---- Training ----
 lr: 5.0e-5                              # 学习率。常用: 1e-5 ~ 5e-5
@@ -60,7 +60,9 @@ offload_optimizer: false                # CPU offload 优化器状态。true=显
 log_steps: 10                           # 每 N *grad_accum* 步打印日志
 save_steps: 100                         # 每 N *grad_accum* 步保存模型（adapter）
 save_ckpt_steps: 500                    # 每 N *grad_accum* 步保存完整 checkpoint（含优化器）
-auto_resume: true                       # 自动从最新 checkpoint 恢复。true=推荐（防中断）
+resume_mode: auto                  # auto=自动检测恢复(哈希校验) | manual=必须写 resume_from
+resume_from:                      # manual模式指定实验路径，auto模式忽略（默认注释）
+init_from:                        # 从此checkpoint分叉新实验（新目录，只加载权重）
 
 # ---- Adapter Advanced ----
 adapter_path: null                      # 加载预训练 adapter 路径。null=从头训练

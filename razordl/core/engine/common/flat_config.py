@@ -20,7 +20,25 @@ def build_single_model_config_dict(
     """Build the shared nested config dict from the public flat YAML schema."""
 
     model_path = d.get("model", model_default)
-    output_dir = d.get("output_dir", "./output")
+    outputs_dir = d.get("outputs_dir", "./outputs")
+    resume_mode = d.get("resume_mode", "auto")
+    resume_from = d.get("resume_from", None)
+    init_from = d.get("init_from", None)
+
+    # Legacy support: auto-migrate old output_dir → outputs_dir
+    if "output_dir" in d and "outputs_dir" not in d:
+        import warnings
+        warnings.warn(
+            "config.yaml uses deprecated 'output_dir'; please rename to 'outputs_dir' "
+            "(the framework now auto-creates timestamped experiment dirs under outputs_dir). "
+            "Your old output_dir value has been migrated to outputs_dir.",
+            DeprecationWarning,
+        )
+        outputs_dir = d["output_dir"]
+
+    # Legacy support: auto_resume → resume_mode
+    if "auto_resume" in d and "resume_mode" not in d:
+        resume_mode = "auto" if d["auto_resume"] else "manual"
 
     use_adapter = d.get("use_adapter", True)
     lora_r = d.get("lora_r", 8)
@@ -55,7 +73,6 @@ def build_single_model_config_dict(
     log_steps = d.get("log_steps", log_steps_default)
     save_steps = d.get("save_steps", save_steps_default)
     save_ckpt_steps = d.get("save_ckpt_steps", save_ckpt_steps_default)
-    auto_resume = d.get("auto_resume", True)
     resume_checkpoint_dir = d.get("resume_checkpoint_dir", None)
     compute_checksums = d.get("compute_checksums", False)
 
@@ -118,12 +135,15 @@ def build_single_model_config_dict(
             "step_batch_size": batch_size,
             "data_loader_num_workers": num_workers,
             "num_epochs": num_epochs,
-            "output_dir": output_dir,
+            "outputs_dir": outputs_dir,
+            "resume_mode": resume_mode,
+            "resume_from": resume_from,
+            "init_from": init_from,
+            "output_dir": None,  # set by engine main() at experiment creation time
             "resume_checkpoint_dir": resume_checkpoint_dir,
             "log_info_steps": log_steps * grad_accum,
             "save_model_steps": save_steps * grad_accum,
             "save_checkpoint_steps": save_ckpt_steps * grad_accum,
-            "auto_resume": auto_resume,
             "seed": seed,
             "compute_checksums": compute_checksums,
         },

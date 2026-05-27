@@ -134,14 +134,19 @@ class BaseTrainerConfig(DictSerializable):
     step_batch_size: int = 1
     data_loader_num_workers: int = 2
     num_epochs: int = 1
-    output_dir: str = None
+    # --- experiment management ---
+    outputs_dir: str = "./outputs"          # parent directory for all experiments
+    resume_mode: str = "auto"              # "auto" (detect+hash-check) | "manual" (require resume_from)
+    resume_from: str = None                # path to experiment dir to resume (manual mode)
+    init_from: str = None                  # path to checkpoint dir to fork from (new exp, weights only)
+    # --- internal (set by framework, not user-configurable) ---
+    output_dir: str = None                 # actual experiment dir, set by main() before Ray starts
     resume_checkpoint_dir: str = None
     log_info_steps: int = 10
     save_model_steps: int = -1
-    save_checkpoint_steps: int = -1  # 保存checkpoint的步数间隔，-1表示不保存checkpoint    
-    auto_resume: bool = True  # 是否自动从最新的checkpoint恢复训练（防止中断）
+    save_checkpoint_steps: int = -1
     seed: int = 42
-    compute_checksums: bool = False  # 保存checkpoint时是否计算每个模型文件的SHA256（更强完整性，但增加IO）
+    compute_checksums: bool = False
 
 
 @dataclass
