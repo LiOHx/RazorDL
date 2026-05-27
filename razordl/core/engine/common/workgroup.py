@@ -14,16 +14,9 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
         self.worker_group_config = config.worker_group_config
 
     def _pre_update_step(self, step: int):
-        import random
+        from razordl.core.base.trainer import set_seed
 
-        import numpy as np
-
-        seed = self.config.trainer_config.seed + step
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
+        set_seed(self.config.trainer_config.seed + step)
 
         for _name, model_group in self.__dict__.items():
             if isinstance(model_group, BaseModelGroup):

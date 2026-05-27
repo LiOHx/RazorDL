@@ -11,7 +11,7 @@
 # ---- Model & Data ----
 model: Qwen/Qwen3-4B-Instruct          # HF model 名或本地路径
 data_path: ./data                       # train.json / train.jsonl 目录
-output_dir: ./output                    # checkpoint & log 输出目录
+outputs_dir: ./outputs               # 实验输出父目录；框架自动生成时间戳子目录
 
 # ---- Training ----
 lr: 5.0e-5                              # 学习率
@@ -59,7 +59,9 @@ offload_optimizer: false
 log_steps: 10
 save_steps: 100
 save_ckpt_steps: 500
-auto_resume: true
+resume_mode: auto                  # auto=自动检测恢复(哈希校验) | manual=必须写 resume_from
+resume_from:			  # manual模式指定实验路径（默认注释）
+init_from:			  # 从此checkpoint分叉新实验（新目录，只加载权重）
 
 # ---- Adapter Advanced ----
 adapter_path: null

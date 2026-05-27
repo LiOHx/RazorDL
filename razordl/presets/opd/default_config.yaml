@@ -23,7 +23,7 @@ teacher_processor_path: ""
 
 # Dataset path — populated automatically when the project is generated.
 data_path: ./data
-output_dir: ./output
+outputs_dir: ./outputs               # 实验输出父目录；框架自动生成时间戳子目录
 
 # OPD-specific knobs
 batch_size: 2
@@ -61,7 +61,9 @@ seed: 42
 log_steps: 1
 save_steps: 50
 save_ckpt_steps: 50
-auto_resume: true
+resume_mode: auto                  # auto=自动检测恢复(哈希校验) | manual=必须写 resume_from
+resume_from:                      # manual模式指定实验路径，auto模式忽略（默认注释）
+init_from:                        # 从此checkpoint分叉新实验（新目录，只加载权重）
 compute_checksums: false
 
 # ------------------- [advanced] -------------------

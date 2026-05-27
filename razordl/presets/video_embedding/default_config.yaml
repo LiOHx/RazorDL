@@ -11,7 +11,7 @@
 # ---- Model & Data ----
 model: OpenSearch-AI/Ops-MM-embedding-v1-2B   # HF multimodal model path
 data_path: ./data                               # train.jsonl + video/ 目录
-output_dir: ./output                            # checkpoint & log 输出目录
+outputs_dir: ./outputs               # 实验输出父目录；框架自动生成时间戳子目录
 
 # ---- Training ----
 lr: 1.0e-4                                      # 学习率。常用: 5e-5 ~ 1e-4
@@ -64,7 +64,9 @@ offload_optimizer: false                        # CPU offload 优化器状态
 log_steps: 10                                   # 每 N *grad_accum* 步打印日志
 save_steps: 100                                 # 每 N *grad_accum* 步保存模型
 save_ckpt_steps: 500                            # 每 N *grad_accum* 步保存完整 checkpoint
-auto_resume: true                               # 自动从最新 checkpoint 恢复
+resume_mode: auto                  # auto=自动检测恢复(哈希校验) | manual=必须写 resume_from
+resume_from:                      # manual模式指定实验路径，auto模式忽略（默认注释）
+init_from:                        # 从此checkpoint分叉新实验（新目录，只加载权重）
 compute_checksums: false                        # 保存 checkpoint 时计算 SHA256（增加 IO，可选完整性校验）
 
 # ---- Adapter Advanced ----

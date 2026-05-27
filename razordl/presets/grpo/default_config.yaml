@@ -9,7 +9,7 @@ model: Qwen/Qwen3-0.6B
 # Dataset path — populated automatically when the project is generated.
 # If you want to use your own data, point this to your data directory.
 data_path: ./data
-output_dir: ./output
+outputs_dir: ./outputs               # 实验输出父目录；框架自动生成时间戳子目录
 
 # GRPO-specific
 batch_size: 2
@@ -46,7 +46,9 @@ seed: 42
 log_steps: 1
 save_steps: 5
 save_ckpt_steps: 5
-auto_resume: true
+resume_mode: auto                  # auto=自动检测恢复(哈希校验) | manual=必须写 resume_from
+resume_from:                      # manual模式指定实验路径，auto模式忽略（默认注释）
+init_from:                        # 从此checkpoint分叉新实验（新目录，只加载权重）
 compute_checksums: false  # 保存 checkpoint 时计算 SHA256（增加 IO，可选完整性校验）
 
 # ------------------- [advanced] -------------------

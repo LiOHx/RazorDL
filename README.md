@@ -17,11 +17,12 @@ Compared to `transformers.Trainer` and `verl`, RazorDL lets you customize the tr
 - **Dataset Cache** -- auto-cache tokenized data to disk for instant reload
 - **LoRA / PEFT** -- compatible with vLLM key-cleaned adapters
 - **Activation Offloading** -- async CPU offloading with gradient checkpointing
-- **Auto-resume** -- automatic checkpoint recovery with deterministic per-step seeding
+- **Experiment management** -- auto-created timestamped experiment dirs with code snapshots, provenance hashes, and pip freeze; `resume_mode: auto` detects code/config changes via hash comparison
+- **Deterministic training** -- centralized `set_seed` for reproducible weight initialization and per-step seeding
 - **Distributed metrics** -- `Reducible` / `DistStats` aggregate cross-rank min/max/std/n exactly (no more "mean of per-rank max" artifacts)
 - **On-Policy Distillation (PG)** -- student samples rollouts via vLLM, teacher provides per-token logπ as PPO advantage (no reference-KL penalty)
 - **Three-tier user architecture** -- simple (black-box), custom (white-box), full (independent project)
-- **CLI tooling** -- `razordl init`, `razordl train`, and `razordl ckpt info <dir>` for inspecting checkpoint metadata
+- **CLI tooling** -- `razordl init`, `razordl train`, `razordl diff` for comparing experiments, and `razordl ckpt info <dir>` for inspecting checkpoint metadata
 
 ---
 

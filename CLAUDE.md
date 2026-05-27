@@ -33,6 +33,7 @@ razordl/
     parallel/      # FSDP2, sequence parallel, activation offload
     model/         # HuggingFace tokenizer/model/attention builders, LoRA/PEFT
     loss/          # DistCrossEntropyLoss, distributed token normalization
+    snapshot.py    # experiment code snapshot, hash, directory scanning
   presets/         # one directory per training recipe
     sft/           # standard supervised fine-tuning
     dft/           # confidence-weighted fine-tuning
@@ -40,7 +41,42 @@ razordl/
     opd/           # PG On-Policy Distillation (vLLM rollout + teacher logπ)
     video_embedding/  # video-text contrastive learning
     _template/     # (optional) copy target for new presets
-  cli/             # argparse-based CLI (init, train, ckpt — no heavy deps at top level)
+  cli/             # argparse-based CLI (init, train, ckpt, diff — no heavy deps at top level)
+```
+
+### Experiment directory structure
+
+Each training run auto-creates a timestamped experiment directory::
+
+    outputs/
+      2026-05-26_14-30-00/              # auto-generated (outputs_dir/resume_mode in config)
+        code/                           # frozen code snapshot (copy to resume elsewhere)
+          config.yaml                   # output_dir hard-coded to absolute experiment path
+          data/
+          src/                          # custom/full mode
+          run.sh
+        pip_freeze.txt                  # full pip environment snapshot
+        provenance.json                 # {code_hash, config_hash, git_commit, razordl_git_commit, ...}
+        checkpoint_000500/
+          checkpoint_info.json
+          model.safetensors
+          optimizer.pt
+        checkpoint_001000/
+        step_info.jsonl
+
+- **Complete detection**: ``checkpoint_info.json`` at experiment root with ``kind: model_only`` means training finished (written by ``save_model_and_processor`` at end of training).
+- **Resume logic** (``resume_mode: auto``): scan ``outputs/`` for latest experiment, check if complete, compare code hash + razordl version against ``provenance.json``.  Hash match + incomplete → auto-resume; hash mismatch → new experiment with warning.
+- **Resume logic** (``resume_mode: manual``): ``resume_from`` required to resume; otherwise always new experiment.
+- **Forking** (``init_from``): set ``init_from: <path-to-checkpoint>`` to fork a new experiment from an existing checkpoint — model weights are loaded but optimizer state and step counter start fresh.  Always creates a new experiment directory.
+- **Copy recovery**: copy ``code/`` to another location, ``config.yaml`` already points to original experiment dir via ``output_dir`` → ``razordl train`` resumes from the original checkpoints.
+
+``razordl diff`` compares experiment code/config::
+
+    razordl diff                              # current project vs latest experiment
+    razordl diff outputs/2026-05-26_14-30-00  # current project vs specified experiment
+    razordl diff outputs/<A> outputs/<B>       # experiment A vs experiment B
+
+Output shows file changes (A/M/D), YAML config key diffs, and git provenance.
 ```
 
 ## Architecture hierarchy (base → engine/common → engine → preset)
@@ -242,6 +278,8 @@ AST helpers live in `razordl/core/export/ast_utils.py` and are reused by preset 
 - **Distribution metrics use `Reducible` leaves.**  Never pre-aggregate min/max/std/sum into a scalar on a rank and ship that — `_summarize_step_info` will then average those scalars across ranks and produce values outside the true sample set (e.g. GRPO `reward.max=1.0` when rewards are `{0.0, 0.5, 1.5}`).  Use `DistStats.from_tensor(t)` (or another `Reducible` subclass in `core/base/metrics.py`) so the aggregator can pool exactly.  Engine-layer gather happens only in `BaseTrainer.run_training_loop`; do not re-add `all_gather_object` in `EngineTrainer.update_step` or `DistStats.n` will be inflated by `world_size`.
 - **Frozen ModelGroups are never persisted.**  `FSDPModelGroup.save_model_and_processor()` and `save_checkpoint()` early-return when `is_trainable=False`.  Reference / teacher models therefore do NOT appear in `checkpoint_*/` subdirs — only `policy_model_group/` does.  When designing new on-policy presets, reuse the engine's `reference_model_group` slot for any frozen counterpart (teacher, critic, etc.) rather than introducing a parallel `model_group_config`.
 - **OPD requires `data_config.teacher_model`.**  Student and teacher MUST share the same tokenizer (vocab + special-token ids).  `OPDWorkGroup.__init__` enforces this with `_validate_tokenizer_compat()`.  The teacher path lives on `data_config` (not a second `model_group_config`); `OPDWorkGroup.__init__` deep-copies the policy config and overrides `model_path`/`processor_path`/`is_trainable=False` for the teacher.
+- **Experiment management: `outputs_dir` + `resume_mode`.**  Users configure ``outputs_dir`` (parent) and ``resume_mode: auto|manual`` — ``output_dir`` is set by the framework at experiment creation time and must NOT appear in user configs.  ``resume_mode: auto`` scans ``outputs/`` for the latest experiment, compares code hash + razordl version against ``provenance.json``, and auto-resumes when unchanged and training is incomplete; otherwise creates a new experiment.  ``resume_mode: manual`` always creates a new experiment unless ``resume_from`` points to an existing experiment.  ``init_from: <checkpoint-path>`` forks a new experiment from an existing checkpoint — model weights load from the checkpoint, but optimizer and step start fresh.
+- **Deterministic training: ``set_seed``.**  ``BaseTrainer.set_seed(seed)`` is the single entry point for seeding Python/numpy/torch/CUDA.  It is called before model initialization (for deterministic LoRA/weight init) and before every training step via ``_pre_update_step``.  Never add ad-hoc ``random.seed`` / ``torch.manual_seed`` calls elsewhere — always import and call ``set_seed``.
 - **Every preset's `build_model()` MUST go through `razordl.ops.model.huggingface.enforce_model_profile(model_path)`.**  This looks up the checkpoint's `cfg.model_type` in `razordl/ops/model/profiles/` and raises `UnsupportedModelError` if no profile is registered, preventing deep-stack crashes from unsupported models.  The function returns the (possibly-adjusted) `PreTrainedConfig` to pass via `from_pretrained(config=...)`.  LM-style presets get this automatically through `build_causal_lm`; multimodal presets (video_embedding) call it explicitly.  To add support for a new model family: create `razordl/ops/model/profiles/<model_type>.py` with a `@register` decorated `ModelProfile` subclass, then add a corresponding absolute-import line in `profiles/__init__.py` (relative imports break the full-mode export's AST walker).  Profiles are stateless, idempotent, and only handle HF-load-time concerns (config preparation, hard precondition checks) — never training logic.
 
 ## Development environment
