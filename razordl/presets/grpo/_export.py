@@ -2,7 +2,7 @@
 
 import os
 
-from razordl.core.export.ast_utils import extract_class, extract_function, replace_ident
+from razordl.core.export.ast_utils import extract_class, extract_function, extract_imports, replace_ident
 
 
 def export_workgroup(preset_pkg_dir: str) -> str:
@@ -14,24 +14,8 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     ref_cls = extract_class(wg_src, "GRPOReferenceModelGroup")
     wg_cls = extract_class(wg_src, "GRPOWorkGroup")
 
-    header = """import contextlib
-import os
-import re
-
-import torch
-
-from razordl.core.base import logging
-from razordl.core.base.metrics import DistStats
-from razordl.core.engine.on_policy_single_model.config import Config
-from razordl.core.engine.on_policy_single_model.modelgroup import ModelGroup as _ModelGroup
-from razordl.core.engine.on_policy_single_model.workgroup import WorkGroup as _WorkGroup
-from razordl.ops.distributed.utils import all_gather_object
-from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
-from razordl.ops.model.per_token_logp import compute_per_token_log_probs
-
-logger = logging.getLogger(__name__)
-
-"""
+    imports = extract_imports(wg_src)
+    header = imports + "\n\nlogger = logging.getLogger(__name__)\n\n"
 
     base_cls = replace_ident(base_cls, "GRPOCausalLMModelGroup", "CausalLMModelGroup")
     policy_cls = replace_ident(policy_cls, "GRPOPolicyModelGroup", "PolicyModelGroup")

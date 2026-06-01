@@ -6,7 +6,7 @@ automatically reflected in generated output.
 
 import os
 
-from razordl.core.export.ast_utils import extract_class, extract_function, replace_ident
+from razordl.core.export.ast_utils import extract_class, extract_function, extract_imports, replace_ident
 
 
 def export_workgroup(preset_pkg_dir: str) -> str:
@@ -19,23 +19,8 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     loss_cls = extract_class(wg_src, "UnifiedContrastiveLoss")
     pooling_fn = extract_function(wg_src, "_pooling")
 
-    header = """import os
-
-import torch
-import torch.nn as nn
-from tensordict.tensordict import TensorDict
-
-from razordl.core.base import logging
-from razordl.core.engine.single_model.workgroup import (
-    ModelGroup as _ModelGroup,
-    WorkGroup as _WorkGroup,
-)
-from razordl.ops.model.huggingface import enforce_model_profile
-from razordl.ops.multimodal import split_multi_modal_input_dict
-
-logger = logging.getLogger(__name__)
-
-"""
+    imports = extract_imports(wg_src)
+    header = imports + "\n\nlogger = logging.getLogger(__name__)\n\n"
 
     model_cls = replace_ident(model_cls, "VideoEmbeddingModelGroup", "ModelGroup")
     wg_cls = replace_ident(wg_cls, "VideoEmbeddingWorkGroup", "WorkGroup")

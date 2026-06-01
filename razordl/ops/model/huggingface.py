@@ -97,7 +97,7 @@ def enforce_model_profile(model_path: str):
 def build_causal_lm(
     model_path: str,
     *,
-    device,
+    device=None,
     use_bf16: bool = True,
     local_rank: int = 0,
     logger=None,
@@ -116,6 +116,8 @@ def build_causal_lm(
             deterministic_env=deterministic_attn,
         ),
         trust_remote_code=True,
-    ).to(device)
+    )
+    if device is not None:
+        model = model.to(device)
     model.config.use_cache = False
     return model

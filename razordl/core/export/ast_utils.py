@@ -32,3 +32,15 @@ def extract_standalone_classes(source: str) -> dict[str, str]:
 
 def replace_ident(source: str, old: str, new: str) -> str:
     return re.sub(r"\b" + re.escape(old) + r"\b", new, source)
+
+
+def extract_imports(source: str) -> str:
+    """Extract all import statements from *source* as a string."""
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    result = []
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for i in range(node.lineno - 1, node.end_lineno):
+                result.append(lines[i])
+    return "\n".join(result)

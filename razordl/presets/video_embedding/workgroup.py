@@ -47,7 +47,7 @@ class VideoEmbeddingModelGroup(_ModelGroup):
             torch_dtype=torch.bfloat16 if use_bf16 else torch.float16,
             attn_implementation="flash_attention_2",
             trust_remote_code=True,
-        ).to(self.device)
+        )
         model.config.use_cache = False
         return model
 

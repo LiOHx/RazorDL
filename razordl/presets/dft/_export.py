@@ -2,8 +2,9 @@
 
 import importlib.util
 import os
+import re
 
-from razordl.core.export.ast_utils import extract_class, replace_ident
+from razordl.core.export.ast_utils import extract_class, extract_imports, replace_ident
 
 
 def _sft_preset_dir(preset_pkg_dir: str) -> str:
@@ -24,16 +25,28 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     base_wg_cls = base_wg_cls.replace("class _BaseWorkGroup(WorkGroup):", "class _BaseWorkGroup(_WorkGroup):")
     loss_cls = extract_class(dft_src, "DistDFTLoss")
 
-    header = """import torch
-
-from razordl.core.base import logging
-from razordl.core.engine.single_model.workgroup import ModelGroup as _ModelGroup, WorkGroup as _WorkGroup
-from razordl.ops.loss.distributed import distributed_token_count
-from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
-
-logger = logging.getLogger(__name__)
-
-"""
+    # Merge imports from both sources, deduplicating.  Filter out the
+    # cross-preset import (from razordl.presets.sft.workgroup) since the
+    # classes it imports are inlined above.
+    sft_imports = extract_imports(sft_src).splitlines()
+    dft_imports = [
+        l for l in extract_imports(dft_src).splitlines()
+        if "razordl.presets.sft" not in l
+    ]
+    seen = set()
+    all_imports = []
+    for line in sft_imports + dft_imports:
+        if line not in seen:
+            seen.add(line)
+            all_imports.append(line)
+    imports = "\n".join(all_imports)
+    imports = re.sub(
+        r",\s*WorkGroup\s*$",
+        ", WorkGroup as _WorkGroup",
+        imports,
+        flags=re.MULTILINE,
+    )
+    header = imports + "\n\nlogger = logging.getLogger(__name__)\n\n"
     wg_cls = """class WorkGroup(_BaseWorkGroup):
     \"\"\"DFT preset: SFT-style model with confidence-weighted CE loss.\"\"\"
 
