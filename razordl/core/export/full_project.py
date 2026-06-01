@@ -88,12 +88,11 @@ def _rewrite_single_import_line(line: str, engine_name: str, preset_name: str) -
         lambda m: f"from base.{m.group(1)} import" if m.group(1) else "from base import",
         line,
     )
-    for ops_pkg in ("distributed", "parallel", "model", "hardware", "multimodal", "loss"):
-        line = re.sub(
-            rf"from\s+razordl\.ops\.{ops_pkg}(?:\.(\w[\w.]*))?\s+import",
-            lambda m, pkg=ops_pkg: f"from ops.{pkg}.{m.group(1)} import" if m.group(1) else f"from ops.{pkg} import",
-            line,
-        )
+    line = re.sub(
+        r"from\s+razordl\.ops\.(\w+(?:\.\w+)*)\s+import",
+        r"from ops.\1 import",
+        line,
+    )
     line = re.sub(
         rf"from\s+razordl\.presets\.{preset_name}\.config\s+import",
         r"from config import",

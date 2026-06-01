@@ -19,6 +19,7 @@ AST helpers in `ast_utils.py`:
 - `extract_class(source, class_name)` — full class definition by line range
 - `extract_function(source, function_name)` — top-level / helper function by line range
 - `extract_standalone_classes(source)` — top-level classes only
+- `extract_imports(source)` — all import statements (single- and multi-line)
 - `replace_ident(source, old, new)` — word-boundary rename (does not match substrings)
 
 ## Engine export profiles
@@ -78,3 +79,4 @@ If a preset reuses SFT classes via AST extraction (e.g. `SFTModelGroup` in DFT/O
 
 - **IMPORTANT — Generated code in `custom` / `full` mode must be self-contained.** Users should be able to read and modify every line without jumping to parent classes. AST extraction inlines what's needed.
 - **IMPORTANT — Use `importlib.util.spec_from_file_location`** to load preset `_export.py` by file path. Never `import razordl.presets.<name>` at module level in CLI / init code.
+- **IMPORTANT — Never hardcode import lists in `_export.py` headers.** Use `extract_imports()` to auto-derive imports from the source file. Hardcoded headers silently rot when the source file gains new dependencies (new ops packages, new third-party imports). The only manual work is handling renames (e.g. `WorkGroup` → `WorkGroup as _WorkGroup`) and filtering out cross-preset imports whose targets are inlined.

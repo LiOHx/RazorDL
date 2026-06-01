@@ -6,8 +6,9 @@ classes.  AST helpers live in ``razordl.core.export.ast_utils``.
 
 import importlib.util
 import os
+import re
 
-from razordl.core.export.ast_utils import extract_class, replace_ident
+from razordl.core.export.ast_utils import extract_class, extract_imports, replace_ident
 
 
 def _sft_preset_dir(preset_pkg_dir: str) -> str:
@@ -29,13 +30,28 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     base_wg_cls = base_wg_cls.replace("class _BaseWorkGroup(WorkGroup):", "class _BaseWorkGroup(_WorkGroup):")
     loss_cls = extract_class(new_src, "DistNEWLoss")  # [改] your loss class
 
-    header = """from razordl.core.base import logging
-from razordl.core.engine.single_model.workgroup import ModelGroup as _ModelGroup, WorkGroup as _WorkGroup
-from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
-
-logger = logging.getLogger(__name__)
-
-"""
+    # Merge imports from both sources, deduplicating.  Filter out the
+    # cross-preset import (from razordl.presets.sft.workgroup) since the
+    # classes it imports are inlined above.
+    sft_imports = extract_imports(sft_src).splitlines()
+    new_imports = [
+        l for l in extract_imports(new_src).splitlines()
+        if "razordl.presets.sft" not in l
+    ]
+    seen = set()
+    all_imports = []
+    for line in sft_imports + new_imports:
+        if line not in seen:
+            seen.add(line)
+            all_imports.append(line)
+    imports = "\n".join(all_imports)
+    imports = re.sub(
+        r",\s*WorkGroup\s*$",
+        ", WorkGroup as _WorkGroup",
+        imports,
+        flags=re.MULTILINE,
+    )
+    header = imports + "\n\nlogger = logging.getLogger(__name__)\n\n"
     wg_cls = """class WorkGroup(_BaseWorkGroup):
     model_group_class = ModelGroup
 

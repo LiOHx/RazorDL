@@ -1,8 +1,9 @@
 """Export SFT preset classes as source code for custom/full modes."""
 
 import os
+import re
 
-from razordl.core.export.ast_utils import extract_class, replace_ident
+from razordl.core.export.ast_utils import extract_class, extract_imports, replace_ident
 
 
 def export_workgroup(preset_pkg_dir: str) -> str:
@@ -12,13 +13,14 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     model_cls = extract_class(wg_src, "SFTModelGroup")
     wg_cls = extract_class(wg_src, "SFTWorkGroup")
 
-    header = """from razordl.core.base import logging
-from razordl.core.engine.single_model.workgroup import ModelGroup as _ModelGroup, WorkGroup as _WorkGroup
-from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
-
-logger = logging.getLogger(__name__)
-
-"""
+    imports = extract_imports(wg_src)
+    imports = re.sub(
+        r",\s*WorkGroup\s*$",
+        ", WorkGroup as _WorkGroup",
+        imports,
+        flags=re.MULTILINE,
+    )
+    header = imports + "\n\nlogger = logging.getLogger(__name__)\n\n"
 
     model_cls = replace_ident(model_cls, "SFTModelGroup", "ModelGroup")
     wg_cls = replace_ident(wg_cls, "SFTWorkGroup", "WorkGroup")
