@@ -61,8 +61,9 @@ class SFTWorkGroup(WorkGroup):
         model = self.model_group.model
 
         loss = self._compute_loss(model, input_dict, labels)
-        loss.backward()
-        return {"loss": loss.item()}
+        raw_loss = loss.detach()
+        self._backward_loss(loss, self.model_group)
+        return {"loss": raw_loss.item()}
 
     def _compute_loss(self, model, input_dict, labels):
         if self.chunked_loss:

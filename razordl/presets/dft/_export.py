@@ -54,8 +54,8 @@ def export_workgroup(preset_pkg_dir: str) -> str:
 
     def __init__(self, config):
         super().__init__(config)
-        mc = config.worker_group_config.model_group_config.model_config
-        mini_scale = getattr(mc, "dft_mini_scale", 0.0)
+        dc = config.data_config
+        mini_scale = getattr(dc, "dft_mini_scale", 0.0)
         self.criterion = DistDFTLoss(ignore_index=-100, mini_scale=mini_scale)
         self.chunked_loss = False
 """

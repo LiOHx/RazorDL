@@ -91,6 +91,7 @@ class BaseModelConfig(DictSerializable):
     enable_activation_offload: bool = False
     sp_size: int = 1
     use_bf16: bool = True       # bfloat16 compute dtype; auto-detected from GPU if not set
+    parallel_backend: str = "fsdp2"  # "fsdp2" | "ddp"
     chunked_loss: bool = False  # compute loss in chunks to avoid giant logits tensor
     chunk_size: int = 2048      # tokens per chunk when chunked_loss=True
     adapter_config: BaseAdapterConfig = field(default_factory=BaseAdapterConfig)

@@ -140,7 +140,7 @@ class VideoEmbeddingWorkGroup(_WorkGroup):
                 tmp_query.unsqueeze(1), tmp_video.transpose(1, 2)
             ).squeeze(1)
             loss = self.criterion(similarity / temperature, labels)
-            loss.backward()
+            self._backward_loss(loss, self.model_group)
             similarity_lst.append(similarity.detach().cpu())
 
         # Video-side micro-batch
@@ -154,7 +154,7 @@ class VideoEmbeddingWorkGroup(_WorkGroup):
                 query_emb.unsqueeze(1), tmp_video.transpose(1, 2)
             ).squeeze(1)
             loss = self.criterion(similarity / temperature, labels)
-            loss.backward()
+            self._backward_loss(loss, self.model_group)
             similarity_lst.append(similarity.detach().cpu())
             del micro_video, tmp_video
 

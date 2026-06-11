@@ -74,6 +74,7 @@ offload_optimizer: false
 chunked_loss: false
 chunk_size: 2048
 sp_size: 1
+parallel_backend: fsdp2                    # 并行后端。fsdp2=省显存, ddp=小模型更快
 use_bf16: true
 
 ray_kwargs:

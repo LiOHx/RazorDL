@@ -78,6 +78,7 @@ def build_single_model_config_dict(
     compute_checksums = d.get("compute_checksums", False)
 
     use_bf16 = d.get("use_bf16", True)
+    parallel_backend = d.get("parallel_backend", "fsdp2")
     chunked_loss = d.get("chunked_loss", False)
     chunk_size = d.get("chunk_size", 2048)
     ray_kwargs = d.get("ray_kwargs", {})
@@ -104,6 +105,7 @@ def build_single_model_config_dict(
                     "enable_activation_offload": enable_activation_offload,
                     "sp_size": sp_size,
                     "use_bf16": use_bf16,
+                    "parallel_backend": parallel_backend,
                     "chunked_loss": chunked_loss,
                     "chunk_size": chunk_size,
                     "_is_offload_param": offload_param,

@@ -3,7 +3,6 @@ import functools
 import torch
 
 from razordl.core.base.workgroup import AutoSetModelGroupNameWorkGroup, BaseModelGroup
-from razordl.ops.parallel.fsdp2 import load_fsdp2_model_to_gpu
 
 
 class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
@@ -20,8 +19,10 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
 
         for _name, model_group in self.__dict__.items():
             if isinstance(model_group, BaseModelGroup):
-                if model_group.model_group_config.model_config._is_offload_param:
-                    load_fsdp2_model_to_gpu(model_group.model)
+                backend = getattr(model_group, "parallel_backend", None)
+                optimizer = getattr(model_group, "optimizer", None)
+                if backend is not None:
+                    backend.load_for_compute(model_group.model)
 
     def _post_update_step(self, input_dict, step: int):
         step_info = {}
@@ -29,6 +30,13 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
             if isinstance(model_group, BaseModelGroup) and getattr(model_group, "optimizer", None) is not None:
                 step_info[model_group_name] = model_group.update_step(step)
         return step_info
+
+    def _backward_loss(self, loss, model_group: BaseModelGroup):
+        """Backward with standard gradient-accumulation scaling."""
+        accumulate_grad_steps = model_group.model_group_config.optimizer_config.accumulate_grad_steps
+        if accumulate_grad_steps < 1:
+            raise ValueError(f"accumulate_grad_steps must be >= 1, got {accumulate_grad_steps}")
+        (loss / accumulate_grad_steps).backward()
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

@@ -50,7 +50,7 @@ class WorkGroup(EngineWorkGroup):
                     loss = self.compute_loss(rollout_output, advantages)
             else:
                 loss = self.compute_loss(rollout_output, advantages)
-            loss.backward()
+            self._backward_loss(loss, policy_group)
 
         return {
             "loss": loss.item(),

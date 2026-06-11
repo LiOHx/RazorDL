@@ -129,9 +129,9 @@ class OPDPolicyModelGroup(OPDCausalLMModelGroup):
             return
         use_lora = self.model_group_config.model_config.adapter_config.use_adapter
         if use_lora:
-            _sync_lora_weights(self.model, engine)
+            _sync_lora_weights(self, engine)
         else:
-            _sync_full_weights(self.model, engine)
+            _sync_full_weights(self, engine)
 
     @contextlib.contextmanager
     def vllm_rollout_context(self):
@@ -149,35 +149,22 @@ def opd_vllm_max_lora_rank(lora_rank: int) -> int:
     raise ValueError(f"lora_rank too large: {lora_rank}")
 
 
-def _sync_lora_weights(model, engine):
-    peft_config = getattr(model, "peft_config", {}).get("default", None)
+def _sync_lora_weights(model_group, engine):
+    """Extract LoRA params through the active parallel backend → vLLM."""
+    model = model_group.model
+    raw_model = model.module if hasattr(model, "module") else model
+    peft_config = getattr(raw_model, "peft_config", {}).get("default", None)
     if peft_config is None:
         return
-
-    from torch.distributed.tensor import DTensor
-
-    params = model.base_model.model.state_dict()
-    lora_params = ((k, v) for k, v in params.items() if "lora" in k)
-
-    def _to_full(kv):
-        name, tensor = kv
-        if isinstance(tensor, DTensor):
-            tensor = tensor.full_tensor()
-        return name, tensor.cpu()
-
-    weights_iter = (_to_full(p) for p in lora_params)
-    engine.update_weights(weights_iter, peft_config=asdict_peft(peft_config))
-
-
-def _sync_full_weights(model, engine):
-    from torch.distributed.tensor import DTensor
-
-    params = model.state_dict()
-    weights_iter = (
-        (k, v.full_tensor().cpu() if isinstance(v, DTensor) else v.cpu())
-        for k, v in params.items()
+    engine.update_weights(
+        model_group.iter_vllm_weights(lora_only=True),
+        peft_config=asdict_peft(peft_config),
     )
-    engine.update_weights(weights_iter)
+
+
+def _sync_full_weights(model_group, engine):
+    """Extract full model weights through the active parallel backend → vLLM."""
+    engine.update_weights(model_group.iter_vllm_weights(lora_only=False))
 
 
 def asdict_peft(peft_config) -> dict:
@@ -200,7 +187,7 @@ def asdict_peft(peft_config) -> dict:
 class OPDTeacherModelGroup(OPDCausalLMModelGroup):
     """Frozen teacher.
 
-    ``FSDPModelGroup.save_*`` already early-returns for ``is_trainable=False``
+    ``ParallelModelGroup.save_*`` already early-returns for ``is_trainable=False``
     after the Phase-1 fix, but we also override here as defense in depth so
     the teacher cannot accidentally be persisted by a future refactor.
     """
@@ -314,7 +301,7 @@ class OPDWorkGroup(_WorkGroup):
         else:
             max_new = getattr(self.config.data_config, "max_completion_length", 256)
             with torch.no_grad():
-                generated = self.policy_model_group.model.generate(
+                generated = self.policy_model_group.inference_model.generate(
                     input_ids=prompt_ids,
                     attention_mask=prompt_mask,
                     max_new_tokens=max_new,
@@ -468,7 +455,7 @@ class OPDWorkGroup(_WorkGroup):
             with policy_group.trainer_context():
                 loss_sum, metrics = self._compute_loss_chunk(mini, mini_adv)
                 loss = loss_sum / global_token_count
-                loss.backward()
+                self._backward_loss(loss, policy_group)
 
             total_loss_sum += loss_sum.item()
             total_clipped += metrics["clipped_count"]
