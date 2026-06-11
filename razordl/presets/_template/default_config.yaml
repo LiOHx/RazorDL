@@ -45,6 +45,7 @@ max_grad_norm: 1.0                      # 梯度裁剪
 
 # ---- Data & Tokenization ----
 enable_gradient_checkpointing: false    # 梯度检查点
+# enable_activation_offload: false      # 激活异步offload。true=长序列省显存（>32K开启），对小模型/短序列反致OOM
 sp_size: 1                              # 序列并行。1=关, 2/4/8=开
 # chunked_loss 如果你的 loss 需要完整 logits 则强制 false
 lazy_tokenize: false

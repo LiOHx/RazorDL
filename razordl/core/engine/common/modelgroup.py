@@ -187,15 +187,20 @@ class FSDPModelGroup(BaseModelGroup):
             model_to_fsdp2_with_lora(model, self.device_mesh, mp_policy)
             self._enable_gradient_checkpointing_after_fsdp(model)
         else:
-            from razordl.ops.parallel.activation import enable_activation_offloading
             from razordl.ops.parallel.fsdp2 import model_to_fsdp2
 
             model_to_fsdp2(model, self.device_mesh, mp_policy)
-            enable_activation_offloading(
-                model,
-                strategy="fsdp2",
-                enable_ckpt=self.model_group_config.model_config.enable_gradient_checkpointing,
-            )
+            if self.model_group_config.model_config.enable_gradient_checkpointing:
+                self._enable_gradient_checkpointing_after_fsdp(model)
+
+            if getattr(self.model_group_config.model_config, "enable_activation_offload", False):
+                from razordl.ops.parallel.activation import enable_activation_offloading
+
+                enable_activation_offloading(
+                    model,
+                    strategy="fsdp2",
+                    enable_ckpt=self.model_group_config.model_config.enable_gradient_checkpointing,
+                )
 
         return model
 
