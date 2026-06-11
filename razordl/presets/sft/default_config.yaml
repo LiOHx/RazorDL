@@ -42,6 +42,7 @@ max_grad_norm: 1.0                      # 梯度裁剪。常用: 0.5~2.0，null=
 
 # ---- Data & Tokenization ----
 enable_gradient_checkpointing: false    # 梯度检查点。true=省显存但慢（长文本/大模型显存不够时开）
+# enable_activation_offload: false      # 激活异步offload。true=长序列省显存（>32K开启），对小模型/短序列反致OOM
 sp_size: 1                              # 序列并行。常用: 1(关), 2, 4, 8（必须整除 attention_heads）
 chunked_loss: false                     # 分块计算 loss。长序列(>8K)显存不够时开，避免 logits OOM
 chunk_size: 2048                        # 分块大小（token 数）。越大越快越吃显存。常用: 1024~4096

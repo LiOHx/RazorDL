@@ -62,6 +62,7 @@ def build_single_model_config_dict(
     num_workers = d.get("num_workers", num_workers_default)
     seed = d.get("seed", 42)
     enable_gradient_checkpointing = d.get("enable_gradient_checkpointing", False)
+    enable_activation_offload = d.get("enable_activation_offload", False)
 
     processor_path = d.get("processor_path", model_path)
     sp_size = d.get("sp_size", data_config.get("sp_size", 1))
@@ -100,6 +101,7 @@ def build_single_model_config_dict(
                     "model_path": model_path,
                     "micro_batch_size_per_gpu": batch_size,
                     "enable_gradient_checkpointing": enable_gradient_checkpointing,
+                    "enable_activation_offload": enable_activation_offload,
                     "sp_size": sp_size,
                     "use_bf16": use_bf16,
                     "chunked_loss": chunked_loss,

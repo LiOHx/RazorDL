@@ -68,6 +68,7 @@ compute_checksums: false
 
 # ------------------- [advanced] -------------------
 enable_gradient_checkpointing: true
+# enable_activation_offload: false      # 激活异步offload。true=长序列省显存（>32K开启），对小模型/短序列反致OOM
 offload_param: false
 offload_optimizer: false
 chunked_loss: false
