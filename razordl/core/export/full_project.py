@@ -132,6 +132,28 @@ def _neutralize_brand(dst_rel: str, source: str) -> str:
 
 
 
+def _find_config_class_name(config_path: str) -> str:
+    with open(config_path, "r", encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+
+    candidates = []
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or not node.name.endswith("Config"):
+            continue
+        has_from_flat_dict = any(
+            isinstance(item, ast.FunctionDef) and item.name == "from_flat_dict"
+            for item in node.body
+        )
+        if has_from_flat_dict:
+            return node.name
+        candidates.append(node.name)
+
+    if candidates:
+        return candidates[-1]
+    raise ValueError(f"No Config class found in {config_path}")
+
+
+
 def _map_dest_path(src_rel: str, engine_name: str, preset_name: str) -> str | None:
     if src_rel.startswith("razordl/"):
         src_rel = src_rel[len("razordl/") :]
@@ -166,7 +188,8 @@ def export_full_project_for_engine(
 ) -> list[str]:
     created = []
     preset_name = os.path.basename(preset_pkg_dir)
-    config_class = f"{preset_name.upper()}Config"
+    config_path = os.path.join(preset_pkg_dir, "config.py")
+    config_class = _find_config_class_name(config_path)
 
     entry_files = [
         os.path.join(razordl_root, "razordl", "core", "engine", engine_name, file_name)

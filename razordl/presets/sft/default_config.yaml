@@ -67,6 +67,7 @@ adapter_path: null                      # 加载预训练 adapter 路径。null=
 modules_to_save: null                   # 额外全参数训练的模块。常用: ["embed_tokens", "lm_head"]
 
 # ---- Infrastructure ----
+parallel_backend: fsdp2                    # 并行后端。fsdp2=省显存, ddp=小模型更快
 use_bf16: true                          # bfloat16。true=现代 GPU 自动支持
 seed: 42                                # 随机种子
 

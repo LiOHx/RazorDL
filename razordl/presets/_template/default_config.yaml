@@ -69,6 +69,7 @@ adapter_path: null
 modules_to_save: null
 
 # ---- Infrastructure ----
+parallel_backend: fsdp2                    # 并行后端。fsdp2=省显存, ddp=小模型更快
 use_bf16: true
 seed: 42
 

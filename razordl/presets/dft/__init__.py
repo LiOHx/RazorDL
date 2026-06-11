@@ -1,4 +1,4 @@
-from razordl.presets.sft.config import SFTConfig as DFTConfig
+from razordl.presets.dft.config import DFTConfig
 from razordl.presets.sft.dataset import SFTDataset, SFTCollator
 from razordl.presets.dft.workgroup import DistDFTLoss, DFTWorkGroup
 

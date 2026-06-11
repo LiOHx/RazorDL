@@ -83,7 +83,7 @@ razordl/
 - **IMPORTANT — Dependency direction is a tree, not a graph.** Vertical inheritance is allowed (`base → engine/common → engine variant → preset`); cross-branch imports are **forbidden** — `on_policy_single_model` must never `import` from `single_model`, and vice versa. Presets under different engines must not cross-import either. Shared code goes to `engine/common/` or `ops/`. Violations silently corrupt full-mode export and cause file collision / missing-code bugs.
 - **IMPORTANT — No hardcoded preset names anywhere in CLI code.** Use `os.listdir("razordl/presets")` + the CamelCase convention (`"".join(p.capitalize() for p in preset.split("_"))`). Directories starting with `_` are excluded.
 - **IMPORTANT — Never import preset packages at module level in CLI / init code.** Triggers heavy deps (tensordict, vllm). Use `importlib.util.spec_from_file_location` to load `_export.py` by file path; use `importlib.import_module(f"razordl.presets.{preset}")` at call time inside `train.py`.
-- **Architecture hierarchy is absolute** (rules live in `@razordl/core/engine/CLAUDE.md`): presets inherit engine variant classes, never `engine/common/*` or `base/*` directly. Engine bugs are fixed in `engine/common/` — single source of truth for FSDP / LoRA / resume / optimizer / grad-clip / offload / seeding.
+- **Architecture hierarchy is absolute** (rules live in `@razordl/core/engine/CLAUDE.md`): presets inherit engine variant classes, never `engine/common/*` or `base/*` directly. Engine bugs are fixed in `engine/common/` — single source of truth for parallel backends / LoRA / resume / optimizer / grad-clip / offload / seeding.
 
 ## Development environment
 

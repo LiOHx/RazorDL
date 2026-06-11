@@ -75,6 +75,7 @@ adapter_path: null                              # 加载预训练 adapter
 modules_to_save: null                           # 额外全参数训练的模块
 
 # ---- Infrastructure ----
+parallel_backend: fsdp2                    # 并行后端。fsdp2=省显存, ddp=小模型更快
 use_bf16: true                                  # bfloat16
 seed: 42                                        # 随机种子
 
