@@ -27,7 +27,8 @@ def _resolve_precision_key(d: dict) -> str:
         warnings.warn(
             f"'use_bf16' is deprecated; use 'precision: auto|bf16|fp16|fp32'. "
             f"Mapped use_bf16={use_bf16!r} to precision={precision!r}. Note that "
-            f"'auto' would additionally pick fp16 over emulated bf16 on pre-Ampere GPUs.",
+            f"use_bf16=False maps to fp16, while 'auto' would pick bf16 on any "
+            f"CUDA GPU and fp32 without one.",
             DeprecationWarning,
             stacklevel=2,
         )
