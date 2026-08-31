@@ -23,7 +23,7 @@ Loaded when working in `razordl/core/engine/`.
 
 `ParallelModelGroup.__init_subclass__` auto-wraps `build_model()` with `_post_build_model()` (adapter, resume, backend wrap/SP).
 
-`EngineWorkGroup.__init_subclass__` auto-wraps `update_step()` (or `_run_update_step()` for on-policy) with `_pre_update_step()` (seeding, offload load) and `_post_update_step()` (optimizer step, grad clip, offload).
+`EngineWorkGroup.__init_subclass__` auto-wraps `update_step()` (or `_run_update_step()` for on-policy) with `_pre_update_step()` (seeding, offload load) and `_post_update_step()` (optimizer step, grad clip, offload), and runs the wrapped call inside `_autocast_context()` — a real `torch.autocast` under `precision: fp16`, a no-op otherwise. Presets must not open their own autocast region.
 
 → **Presets must NOT** perform optimizer step, gradient clipping, parameter offloading, checkpoint save/load, or shared seeding. Those are engine-wrapped.
 

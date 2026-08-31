@@ -1,3 +1,47 @@
+def _resolve_precision_key(d: dict) -> str:
+    """Read the `precision` flat key, honouring the deprecated `use_bf16` boolean.
+
+    `precision` wins when both are present -- an explicit new-style key is never
+    overridden by a stale one left in the same file.
+    """
+    import warnings
+
+    from razordl.ops.hardware.precision import (
+        PRECISION_CHOICES,
+        legacy_use_bf16_to_precision,
+    )
+
+    precision = d.get("precision", None)
+    use_bf16 = d.get("use_bf16", None)
+
+    if precision is not None and use_bf16 is not None:
+        warnings.warn(
+            f"Both 'precision' and the deprecated 'use_bf16' are set; using "
+            f"precision={precision!r} and ignoring use_bf16={use_bf16!r}. "
+            f"Remove 'use_bf16' from your config.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    elif precision is None and use_bf16 is not None:
+        precision = legacy_use_bf16_to_precision(use_bf16)
+        warnings.warn(
+            f"'use_bf16' is deprecated; use 'precision: auto|bf16|fp16|fp32'. "
+            f"Mapped use_bf16={use_bf16!r} to precision={precision!r}. Note that "
+            f"'auto' would additionally pick fp16 over emulated bf16 on pre-Ampere GPUs.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    elif precision is None:
+        precision = "auto"
+
+    precision = str(precision).lower()
+    if precision not in PRECISION_CHOICES:
+        raise ValueError(
+            f"precision must be one of {list(PRECISION_CHOICES)}, got {precision!r}"
+        )
+    return precision
+
+
 def build_single_model_config_dict(
     d: dict,
     *,
@@ -77,7 +121,7 @@ def build_single_model_config_dict(
     resume_checkpoint_dir = d.get("resume_checkpoint_dir", None)
     compute_checksums = d.get("compute_checksums", False)
 
-    use_bf16 = d.get("use_bf16", True)
+    precision = _resolve_precision_key(d)
     parallel_backend = d.get("parallel_backend", "fsdp2")
     chunked_loss = d.get("chunked_loss", False)
     chunk_size = d.get("chunk_size", 2048)
@@ -104,7 +148,7 @@ def build_single_model_config_dict(
                     "enable_gradient_checkpointing": enable_gradient_checkpointing,
                     "enable_activation_offload": enable_activation_offload,
                     "sp_size": sp_size,
-                    "use_bf16": use_bf16,
+                    "precision": precision,
                     "parallel_backend": parallel_backend,
                     "chunked_loss": chunked_loss,
                     "chunk_size": chunk_size,

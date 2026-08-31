@@ -1,3 +1,4 @@
+import contextlib
 import functools
 
 import torch
@@ -31,12 +32,49 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
                 step_info[model_group_name] = model_group.update_step(step)
         return step_info
 
+    def _autocast_context(self):
+        """Autocast the forward/backward when any model group runs fp16.
+
+        fp16 is only numerically sound under ``torch.autocast``; relying on the
+        parallel backend to cast every op down produces NaN gradients at any
+        loss scale (see ``ops/hardware/precision.py::needs_autocast``).  bf16 and
+        fp32 get a no-op context.
+
+        Engine-level on purpose: the forward lives in preset code, so this is
+        the only layer that can wrap every preset without each of them opting
+        in.  ``_post_update_step`` (optimizer step, clipping) stays outside.
+        """
+        from razordl.ops.hardware.precision import (
+            needs_autocast,
+            resolve_precision,
+            to_torch_dtype,
+        )
+
+        # Resolved once and cached: this runs on every training step.
+        if not hasattr(self, "_autocast_dtype"):
+            self._autocast_dtype = None
+            if torch.cuda.is_available():
+                for _name, model_group in self.__dict__.items():
+                    if not isinstance(model_group, BaseModelGroup):
+                        continue
+                    precision = resolve_precision(
+                        model_group.model_group_config.model_config.precision
+                    )
+                    if needs_autocast(precision):
+                        self._autocast_dtype = to_torch_dtype(precision)
+                        break
+
+        if self._autocast_dtype is None:
+            return contextlib.nullcontext()
+        return torch.autocast("cuda", dtype=self._autocast_dtype)
+
     def _backward_loss(self, loss, model_group: BaseModelGroup):
         """Backward with standard gradient-accumulation scaling."""
         accumulate_grad_steps = model_group.model_group_config.optimizer_config.accumulate_grad_steps
         if accumulate_grad_steps < 1:
             raise ValueError(f"accumulate_grad_steps must be >= 1, got {accumulate_grad_steps}")
-        (loss / accumulate_grad_steps).backward()
+        # scale_loss is a no-op unless fp16 loss scaling is active.
+        model_group.scale_loss(loss / accumulate_grad_steps).backward()
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -48,7 +86,8 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
             def wrapper(self, input_dict, step: int, *args, **kwargs):
                 step_info = {}
                 self._pre_update_step(step)
-                step_info.update(original_update_step(self, input_dict, step, *args, **kwargs))
+                with self._autocast_context():
+                    step_info.update(original_update_step(self, input_dict, step, *args, **kwargs))
                 step_info.update(self._post_update_step(input_dict, step))
                 return step_info
 
@@ -62,7 +101,8 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
             def wrapper(self, input_dict, step: int, *args, **kwargs):
                 step_info = {}
                 self._pre_update_step(step)
-                step_info.update(original_run_update_step(self, input_dict, step, *args, **kwargs))
+                with self._autocast_context():
+                    step_info.update(original_run_update_step(self, input_dict, step, *args, **kwargs))
                 step_info.update(self._post_update_step(input_dict, step))
                 return step_info
 

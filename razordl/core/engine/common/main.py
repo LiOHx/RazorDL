@@ -27,6 +27,46 @@ from razordl.ops.snapshot import (
 )
 
 
+def _log_hardware_capabilities(config, logger) -> None:
+    """Log detected accelerator capabilities and the precision they resolve to.
+
+    Printed before Ray starts so "why is this slow?" is answerable from the
+    first few lines of the log rather than by bisecting the config.
+    """
+    from razordl.ops.hardware.device import describe
+    from razordl.ops.hardware.precision import resolve_precision
+
+    info = describe()
+    logger.info(
+        "[HW] %s x%s | %s | %.1f GB | native bf16: %s | flash-attn 2: %s",
+        info.get("name") or info["device"],
+        info["count"],
+        info.get("compute_capability") or "n/a",
+        info["memory_gb"],
+        info["native_bf16"],
+        info["flash_attention_2"],
+    )
+
+    model_config = getattr(
+        getattr(config, "worker_group_config", None), "model_group_config", None
+    )
+    model_config = getattr(model_config, "model_config", None)
+    requested = getattr(model_config, "precision", "auto")
+    resolved = resolve_precision(requested)
+    logger.info("[HW] precision: %s -> %s", requested, resolved)
+    if resolved == "fp16":
+        logger.info(
+            "[HW] fp16 path active: fp32 master weights for trainable params "
+            "+ GradScaler loss scaling + autocast forward."
+        )
+    elif resolved == "bf16" and not info["native_bf16"]:
+        logger.info(
+            "[HW] bf16 is emulated in software on this GPU. Measured here it "
+            "still beats fp16 on both step time and memory; set "
+            "precision: fp16 to take the tensor-core path instead."
+        )
+
+
 def _create_experiment_dir(outputs_dir: str) -> str:
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     exp_dir = os.path.join(outputs_dir, ts)
@@ -129,6 +169,7 @@ def main(
 ):
     check_device_compatibility()
 
+
     # --- experiment management (before Ray starts) ---
     logger = logging.getLogger(__name__)
     logging.basicConfig(
@@ -136,6 +177,8 @@ def main(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler()],
     )
+
+    _log_hardware_capabilities(config, logger)
 
     project_dir = os.getcwd()
     outputs_dir = getattr(config.trainer_config, "outputs_dir", "./outputs")

@@ -9,7 +9,11 @@ from razordl.core.engine.single_model.workgroup import (
     ModelGroup as _ModelGroup,
     WorkGroup as _WorkGroup,
 )
-from razordl.ops.model.huggingface import enforce_model_profile
+from razordl.ops.model.huggingface import (
+    enforce_model_profile,
+    resolve_attn_implementation,
+    resolve_storage_dtype,
+)
 from razordl.ops.multimodal import split_multi_modal_input_dict
 from razordl.presets.video_embedding.config import VideoEmbeddingConfig
 
@@ -38,14 +42,17 @@ class VideoEmbeddingModelGroup(_ModelGroup):
     def build_model(self):
         from transformers import AutoModelForImageTextToText
 
-        use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-        model_path = self.model_group_config.model_config.model_path
+        mc = self.model_group_config.model_config
+        model_path = mc.model_path
         cfg = enforce_model_profile(model_path)
         model = AutoModelForImageTextToText.from_pretrained(
             model_path,
             config=cfg,
-            torch_dtype=torch.bfloat16 if use_bf16 else torch.float16,
-            attn_implementation="flash_attention_2",
+            torch_dtype=resolve_storage_dtype(mc.precision, trainable=self.is_trainable),
+            attn_implementation=resolve_attn_implementation(
+                local_rank=self.local_rank,
+                logger=logger,
+            ),
             trust_remote_code=True,
         )
         model.config.use_cache = False

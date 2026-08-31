@@ -19,6 +19,7 @@ class ParallelModelGroup(BaseModelGroup):
         self.model_group_config = config.worker_group_config.model_group_config
         self.model_group_name = self.model_group_config.model_group_name
         self.local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        self.scaler = None  # fp16 loss scaler; set by build_optimizer()
         self.device = self.get_device()
         self.parallel_backend = build_parallel_backend(
             self.model_group_config.model_config.parallel_backend,
@@ -74,7 +75,7 @@ class ParallelModelGroup(BaseModelGroup):
         if not self.is_trainable:
             for param in model.parameters():
                 param.requires_grad = False
-        model = self._cast_trainable_params_to_compute_dtype(model)
+        model = self._cast_params_to_storage_dtype(model)
         model = self.parallel_backend.wrap_model(model)
         return model
 
@@ -135,13 +136,36 @@ class ParallelModelGroup(BaseModelGroup):
 
         return model
 
-    def _cast_trainable_params_to_compute_dtype(self, model):
-        use_bf16 = self.model_group_config.model_config.use_bf16
-        if use_bf16:
-            use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-        target_dtype = torch.bfloat16 if use_bf16 else torch.float16
+    def _cast_params_to_storage_dtype(self, model):
+        """Make every parameter share the precision's storage dtype.
+
+        Storage dtype equals the compute dtype except under fp16, where it is
+        fp32: fp16 master weights lose updates below fp16 relative precision
+        (lr=5e-5 sits right at that boundary) and make ``clip_grad_norm_``
+        compute the total norm in fp16, which silently zeroes every gradient
+        once it overflows 65504.  FSDP2's
+        ``MixedPrecisionPolicy(param_dtype=fp16)`` casts down for compute, so
+        the fp32 shard costs memory, not speed.
+
+        Within a trainable group the frozen params are promoted too, even
+        though they need no master copy: FSDP2 asserts on mixed dtypes within a
+        sharded unit, and a LoRA layer keeps the frozen base weight next to the
+        trainable adapter.  A wholly frozen group (reference / teacher model)
+        has no optimizer at all, so it stays at the compute dtype -- uniform,
+        and half the memory.
+        """
+        from razordl.ops.hardware.precision import (
+            resolve_precision,
+            to_storage_dtype,
+            to_torch_dtype,
+        )
+
+        precision = resolve_precision(self.model_group_config.model_config.precision)
+        target_dtype = (
+            to_storage_dtype(precision) if self.is_trainable else to_torch_dtype(precision)
+        )
         for _name, param in model.named_parameters():
-            if param.requires_grad and param.dtype != target_dtype:
+            if param.is_floating_point() and param.dtype != target_dtype:
                 param.data = param.data.to(target_dtype)
         return model
 
@@ -175,12 +199,43 @@ class ParallelModelGroup(BaseModelGroup):
             lr=self.model_group_config.optimizer_config.learning_rate,
             weight_decay=self.model_group_config.optimizer_config.weight_decay,
         )
+        self._build_grad_scaler()
         return self._resume_optimizer_checkpoint(optimizer)
+
+    def _build_grad_scaler(self):
+        """Create the fp16 loss scaler, or leave it None for bf16 / fp32.
+
+        fp16 gradients underflow to zero without loss scaling. bf16 has the
+        same exponent range as fp32 and needs none.
+        """
+        from razordl.ops.hardware.precision import needs_grad_scaler, resolve_precision
+
+        precision = resolve_precision(self.model_group_config.model_config.precision)
+        if not needs_grad_scaler(precision):
+            self.scaler = None
+            return
+
+        self.scaler = torch.amp.GradScaler("cuda")
+        if self.local_rank == 0:
+            logger.info(
+                "[%s] fp16: GradScaler enabled (initial scale %.0f)",
+                self.model_group_name,
+                self.scaler.get_scale(),
+            )
+
+    def scale_loss(self, loss):
+        """Scale *loss* before backward when fp16 loss scaling is active.
+
+        Returns *loss* unchanged for bf16 / fp32 so callers need no branching.
+        """
+        scaler = getattr(self, "scaler", None)
+        return loss if scaler is None else scaler.scale(loss)
 
     def _resume_optimizer_checkpoint(self, optimizer):
         if getattr(self.config.trainer_config, "init_from", None):
             logger.info("[INIT_FROM] Skipping optimizer state — starting fresh")
             return optimizer
+        self._resume_grad_scaler()
         optimizer_path = self._find_checkpoint_file("optimizer.pt")
         if optimizer_path:
             try:
@@ -195,6 +250,33 @@ class ParallelModelGroup(BaseModelGroup):
     def save_optimizer(self, checkpoint_dir: str):
         if self.optimizer is not None:
             self.parallel_backend.save_optimizer(self.model, self.optimizer, checkpoint_dir)
+        self.save_grad_scaler(checkpoint_dir)
+
+    def save_grad_scaler(self, checkpoint_dir: str):
+        """Persist the fp16 scale factor next to the optimizer state.
+
+        Without it a resumed run restarts from the initial scale and burns
+        several steps re-probing for the right one.
+        """
+        if self.scaler is None or self.local_rank != 0:
+            return
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        torch.save(self.scaler.state_dict(), os.path.join(checkpoint_dir, "scaler.pt"))
+
+    def _resume_grad_scaler(self):
+        """Restore the scaler state; a checkpoint without one is not an error."""
+        if self.scaler is None:
+            return
+        scaler_path = self._find_checkpoint_file("scaler.pt")
+        if not scaler_path:
+            return
+        try:
+            self.scaler.load_state_dict(torch.load(scaler_path, map_location="cpu"))
+            if self.local_rank == 0:
+                logger.info("[RESUME] GradScaler scale restored: %.0f", self.scaler.get_scale())
+        except Exception:
+            logger.exception("[RESUME] Failed to load GradScaler state from %s", scaler_path)
+            raise
 
     def build_scheduler(self):
         pass
@@ -222,18 +304,36 @@ class ParallelModelGroup(BaseModelGroup):
 
         accumulate_grad_steps = self.model_group_config.optimizer_config.accumulate_grad_steps
         grad_norm = 0.0
+        grad_overflow = False
         if step % accumulate_grad_steps == 0 or step == -1:
             self.parallel_backend.load_for_optimizer_step(self.model, self.optimizer)
+
+            # Unscale before clipping: clip_grad_norm_ must see true gradient
+            # magnitudes, and unscale_ may be called only once per optimizer
+            # step -- which the accumulation gate above already guarantees.
+            if self.scaler is not None:
+                self.scaler.unscale_(self.optimizer)
+
             max_grad_norm = getattr(self.model_group_config.optimizer_config, "max_grad_norm", None)
             if max_grad_norm is not None:
                 grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_grad_norm)
                 grad_norm = grad_norm.item()
 
-            self.optimizer.step()
+            if self.scaler is not None:
+                scale_before = self.scaler.get_scale()
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                # A dropped scale means the step was skipped on non-finite
+                # grads. Surface it: otherwise this looks exactly like a loss
+                # curve that simply refuses to move.
+                grad_overflow = self.scaler.get_scale() < scale_before
+            else:
+                self.optimizer.step()
+
             self.optimizer.zero_grad()
             self.parallel_backend.offload_after_optimizer_step(self.model, self.optimizer)
 
-        return dict(grad_norm=grad_norm)
+        return dict(grad_norm=grad_norm, grad_overflow=grad_overflow)
 
     def trainer_context(self):
         return self.parallel_backend.trainer_context(self.model, self.optimizer)

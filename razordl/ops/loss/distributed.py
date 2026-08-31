@@ -16,7 +16,12 @@ class DistCrossEntropyLoss(torch.nn.Module):
         self.ce = torch.nn.CrossEntropyLoss(ignore_index=ignore_index, reduction="none")
 
     def forward(self, logits, labels):
-        ce_loss = self.ce(logits, labels)
+        # Upcast to fp32 before the softmax and the sum, matching what the
+        # chunked path in presets/sft/workgroup.py already does. In fp16 a
+        # per-token loss sum over a few thousand tokens overflows 65504 to inf;
+        # even below that the reduction loses precision. Costs one fp32 copy of
+        # the logits -- with a large vocabulary, prefer chunked_loss.
+        ce_loss = self.ce(logits.float(), labels)
         valid_tokens = (labels != self.ignore_index).sum().item()
         batch_valid_tokens = distributed_token_count(valid_tokens)
         return ce_loss.sum() / max(batch_valid_tokens, 1)

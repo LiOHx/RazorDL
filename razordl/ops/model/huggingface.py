@@ -29,25 +29,70 @@ def convert_weight_keys(state_dict: dict[str, torch.Tensor], model: PreTrainedMo
     return original_weights
 
 
-def resolve_compute_dtype(use_bf16: bool = True):
-    if use_bf16 and torch.cuda.is_available() and torch.cuda.is_bf16_supported():
-        return torch.bfloat16
-    return torch.float16
+def resolve_compute_dtype(precision: str = "auto"):
+    """Resolve a `precision` config value into the *compute* dtype.
+
+    This is what the forward/backward runs in -- i.e. what FSDP2 gets as
+    `MixedPrecisionPolicy(param_dtype=...)`.  To load weights, use
+    :func:`resolve_storage_dtype` instead: under fp16 the two differ.
+
+    Delegates to `razordl.ops.hardware.precision` -- the single source of truth
+    for dtype selection.  Never probe capabilities here.
+    """
+    from razordl.ops.hardware.precision import resolve_precision, to_torch_dtype
+
+    return to_torch_dtype(resolve_precision(precision))
+
+
+def resolve_storage_dtype(precision: str = "auto", *, trainable: bool = True):
+    """Resolve a `precision` config value into the dtype weights are held in.
+
+    Equals the compute dtype except under fp16, where parameters stay fp32 as
+    master weights.  Model loading must use this so every parameter of a
+    sharded unit shares one dtype (FSDP2 asserts on mixed dtypes).
+
+    ``trainable=False`` (reference / teacher models) skips the promotion: with
+    no optimizer there is nothing to keep a master copy for, and loading at the
+    compute dtype halves both peak and resident memory.
+    """
+    from razordl.ops.hardware.precision import (
+        resolve_precision,
+        to_storage_dtype,
+        to_torch_dtype,
+    )
+
+    resolved = resolve_precision(precision)
+    return to_storage_dtype(resolved) if trainable else to_torch_dtype(resolved)
 
 
 def resolve_attn_implementation(local_rank: int = 0, logger=None, deterministic_env: bool = True) -> str:
     if deterministic_env and os.environ.get("RAZORDL_DETERMINISTIC") in {"1", "true", "True"}:
         return "eager"
 
+    from razordl.ops.hardware import device
+
+    fallback = "sdpa" if torch.cuda.is_available() else "eager"
+
+    # flash-attn 2 requires Ampere (sm_80+). It imports fine on Turing/Volta but
+    # crashes at forward, so importability alone is not enough of a criterion.
+    if not device.supports_flash_attention_2():
+        if logger is not None and local_rank == 0:
+            cap = device.describe().get("compute_capability")
+            logger.info(
+                "[MODEL] flash_attention_2 needs sm_80+ (this GPU is %s), using %s",
+                cap,
+                fallback,
+            )
+        return fallback
+
     try:
         import flash_attn  # noqa: F401
 
         return "flash_attention_2"
     except ImportError:
-        attn_impl = "sdpa" if torch.cuda.is_available() else "eager"
         if logger is not None and local_rank == 0:
-            logger.warning("[MODEL] flash_attn not installed, falling back to %s", attn_impl)
-        return attn_impl
+            logger.warning("[MODEL] flash_attn not installed, falling back to %s", fallback)
+        return fallback
 
 
 def build_left_padding_tokenizer(processor_path: str | None, model_path: str, *, ensure_pad_token: bool = False):
@@ -98,7 +143,8 @@ def build_causal_lm(
     model_path: str,
     *,
     device=None,
-    use_bf16: bool = True,
+    precision: str = "auto",
+    trainable: bool = True,
     local_rank: int = 0,
     logger=None,
     deterministic_attn: bool = True,
@@ -109,7 +155,7 @@ def build_causal_lm(
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         config=cfg,
-        torch_dtype=resolve_compute_dtype(use_bf16),
+        torch_dtype=resolve_storage_dtype(precision, trainable=trainable),
         attn_implementation=resolve_attn_implementation(
             local_rank=local_rank,
             logger=logger,

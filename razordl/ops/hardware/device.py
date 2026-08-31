@@ -4,14 +4,19 @@ Delegates to backend-specific modules (cuda, mps, xpu, rocm...).
 Adding a new hardware backend only requires a new module + a line here.
 """
 
+import importlib
+
 import torch
 
-import razordl.ops.hardware.cuda as cuda
+
+def _backend(name: str):
+    """Lazily import a backend module (see this directory's CLAUDE.md hard rule)."""
+    return importlib.import_module(f"razordl.ops.hardware.{name}")
 
 
 def get_available_device() -> str:
     """Return the best available device type: 'cuda', 'mps', or 'cpu'."""
-    if cuda.is_available():
+    if _backend("cuda").is_available():
         return "cuda"
     if torch.backends.mps.is_available():
         return "mps"
@@ -22,10 +27,43 @@ def get_device_count() -> int:
     """Return the number of available accelerators (GPUs, etc.)."""
     device = get_available_device()
     if device == "cuda":
-        return cuda.get_device_count()
+        return _backend("cuda").get_device_count()
     if device == "mps":
         return 1  # Apple Silicon has at most 1 GPU per process
     return 0
+
+
+def supports_native_bf16() -> bool:
+    """Return True if the active accelerator has native (non-emulated) bf16."""
+    device = get_available_device()
+    if device == "cuda":
+        return _backend("cuda").supports_native_bf16()
+    # MPS has no bf16 tensor cores; CPU bf16 is emulated on most x86.
+    return False
+
+
+def supports_flash_attention_2() -> bool:
+    """Return True if the active accelerator can run flash-attn 2 kernels."""
+    device = get_available_device()
+    if device == "cuda":
+        return _backend("cuda").supports_flash_attention_2()
+    return False
+
+
+def describe() -> dict:
+    """Return a flat dict of accelerator capabilities for startup logging."""
+    device = get_available_device()
+    if device == "cuda":
+        return _backend("cuda").describe()
+    return {
+        "device": device,
+        "name": None,
+        "count": get_device_count(),
+        "compute_capability": None,
+        "memory_gb": 0.0,
+        "native_bf16": False,
+        "flash_attention_2": False,
+    }
 
 
 def check_device_compatibility() -> None:
@@ -36,14 +74,14 @@ def check_device_compatibility() -> None:
     """
     device = get_available_device()
     if device == "cuda":
-        cuda.check_compatibility()
+        _backend("cuda").check_compatibility()
         return
     if device == "mps":
         # MPS is available; nothing extra to check for now
         return
     # CPU fallback -- training will fail later with a clearer error,
     # but we can warn here if desired.
-    index_url = cuda.get_recommended_torch_index()
+    index_url = _backend("cuda").get_recommended_torch_index()
     raise RuntimeError(
         "No GPU accelerator detected (CUDA or MPS).\n"
         "RazorDL training requires at least one NVIDIA or Apple Silicon GPU.\n\n"

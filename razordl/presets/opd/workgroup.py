@@ -16,6 +16,7 @@ from razordl.core.engine.on_policy_single_model.config import Config
 from razordl.core.engine.on_policy_single_model.modelgroup import ModelGroup as _ModelGroup
 from razordl.core.engine.on_policy_single_model.workgroup import WorkGroup as _WorkGroup
 from razordl.ops.distributed.utils import all_gather_object
+from razordl.ops.hardware.precision import resolve_precision, to_vllm_dtype_name
 from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
 from razordl.ops.model.per_token_logp import compute_per_token_log_probs
 
@@ -39,7 +40,8 @@ class OPDCausalLMModelGroup(_ModelGroup):
     def build_model(self):
         return build_causal_lm(
             self.model_group_config.model_config.model_path,
-            use_bf16=self.model_group_config.model_config.use_bf16,
+            precision=self.model_group_config.model_config.precision,
+            trainable=self.is_trainable,
             local_rank=self.local_rank,
             logger=logger,
         )
@@ -90,7 +92,7 @@ class OPDPolicyModelGroup(OPDCausalLMModelGroup):
                 enable_sleep_mode=True,
                 tensor_parallel_size=1,
                 distributed_executor_backend="external_launcher",
-                dtype="bfloat16" if model_cfg.use_bf16 else "float16",
+                dtype=to_vllm_dtype_name(resolve_precision(model_cfg.precision)),
                 enforce_eager=False,
                 gpu_memory_utilization=0.25,
                 disable_custom_all_reduce=True,

@@ -85,13 +85,20 @@ class FSDP2Backend(ParallelBackend):
         from torch.distributed.fsdp import MixedPrecisionPolicy
         from razordl.ops.parallel.fsdp2 import create_device_mesh
 
-        mc = self.model_group_config.model_config
-        use_bf16 = mc.use_bf16
-        if use_bf16:
-            use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        from razordl.ops.hardware.precision import resolve_precision, to_torch_dtype
 
+        mc = self.model_group_config.model_config
+        precision = resolve_precision(mc.precision)
+
+        # Under fp16 the sharded params stay fp32 (see
+        # ParallelModelGroup._cast_params_to_storage_dtype); param_dtype
+        # is what FSDP2 casts to for compute, so this is real mixed precision
+        # rather than the no-op it would be if params were already fp16.
+        # This cast alone is NOT numerically sufficient for fp16 -- the forward
+        # additionally runs under torch.autocast (EngineWorkGroup), which pulls
+        # the sensitive ops back up to fp32.
         mp_policy = MixedPrecisionPolicy(
-            param_dtype=torch.bfloat16 if use_bf16 else torch.float16,
+            param_dtype=to_torch_dtype(precision),
             reduce_dtype=torch.float32,
             cast_forward_inputs=True,
         )
@@ -251,6 +258,18 @@ class DDPBackend(ParallelBackend):
         if unsupported:
             raise ValueError(
                 "parallel_backend='ddp' does not support: " + ", ".join(unsupported)
+            )
+
+        # DDP has no MixedPrecisionPolicy, but it does not need one: params stay
+        # fp32 and EngineWorkGroup._autocast_context() gives the forward real
+        # fp16 compute. bf16 under DDP is the one that computes in fp32.
+        from razordl.ops.hardware.precision import resolve_precision
+
+        if resolve_precision(mc.precision) == "bf16" and self.local_rank == 0:
+            logger.warning(
+                "[DDP] precision resolves to bf16 but DDP has no mixed-precision "
+                "casting, so the forward runs in whatever dtype the weights were "
+                "loaded in. Use parallel_backend='fsdp2' for a bf16 policy."
             )
 
     def wrap_model(self, model):

@@ -25,7 +25,8 @@ class SFTModelGroup(_ModelGroup):
     def build_model(self):
         return build_causal_lm(
             self.model_group_config.model_config.model_path,
-            use_bf16=self.model_group_config.model_config.use_bf16,
+            precision=self.model_group_config.model_config.precision,
+            trainable=self.is_trainable,
             local_rank=self.local_rank,
             logger=logger,
         )
