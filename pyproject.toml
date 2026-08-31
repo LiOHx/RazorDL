@@ -25,7 +25,9 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "torch>=2.6.0",
-    "transformers>=4.40.0",
+    # >=5.2.0 is where `qwen3_5` lands in transformers; the qwen3_5 profile
+    # relies on its Qwen3_5TextConfig / base_config_key unwrap path.
+    "transformers>=5.2.0",
     "accelerate>=0.30.0",
     "tensordict>=0.3.0",
 
@@ -55,7 +57,8 @@ dependencies = [
 [project.optional-dependencies]
 sft = [
     "datasets>=2.14.0",
-    "pyarrow>=14.0.0,<16.0.0",
+    # <16 pinned us to a NumPy-1-only build; transformers 5.x requires NumPy 2.
+    "pyarrow>=16.0.0",
     "peft>=0.11.0",
 ]
 video_embedding = [
@@ -80,7 +83,8 @@ xformers = [
 ]
 all = [
     "datasets>=2.14.0",
-    "pyarrow>=14.0.0,<16.0.0",
+    # <16 pinned us to a NumPy-1-only build; transformers 5.x requires NumPy 2.
+    "pyarrow>=16.0.0",
     "peft>=0.11.0",
     "xformers>=0.0.25",
     "decord>=0.6.0",
