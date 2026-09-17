@@ -17,44 +17,12 @@ import torch.nn as nn
 import os
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 import logging
+
+from razordl.ops.hardware.device import get_available_device, get_device_id
+
 logger = logging.getLogger(__name__)
 fully_shard_module = torch.distributed.fsdp._fully_shard._fully_shard
 
-
-def get_device_name() -> str:
-    """Function that gets the torch.device based on the current machine.
-    This currently only supports CPU, CUDA, NPU.
-    Returns:
-        device
-    """
-    if torch.cuda.is_available():
-        device = "cuda"
-    else:
-        device = "cpu"
-    return device
-
-
-def get_torch_device() -> any:
-    """Return the corresponding torch attribute based on the device type string.
-    Returns:
-        module: The corresponding torch device namespace, or torch.cuda if not found.
-    """
-    device_name = get_device_name()
-    try:
-        return getattr(torch, device_name)
-    except AttributeError:
-        logger.warning(f"Device namespace '{device_name}' not found in torch, try to load torch.cuda.")
-        return torch.cuda
-
-
-def get_device_id() -> int:
-    """Return current device id based on the device type.
-    Returns:
-        device index
-    """
-    return get_torch_device().current_device()
-
-device_name = get_device_name()
 
 @contextmanager
 def maybe_patch_fsdp_module(model):
@@ -89,6 +57,7 @@ def get_shard_placement_fn(fsdp_size):
 
 
 def create_device_mesh(world_size, fsdp_size):
+    device_name = get_available_device()
     if fsdp_size < 0 or fsdp_size >= world_size:
         device_mesh = init_device_mesh(device_name, mesh_shape=(world_size,), mesh_dim_names=["fsdp"])
     else:

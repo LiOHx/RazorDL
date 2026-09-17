@@ -9,7 +9,7 @@ import torch
 import torch.distributed as dist
 
 from razordl.core.base import logging
-from razordl.ops.distributed.torch import get_device_id
+from razordl.ops.hardware.device import get_device_id
 
 logger = logging.getLogger(__name__)
 

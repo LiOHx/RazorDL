@@ -36,6 +36,11 @@ def get_driver_cuda_version() -> str | None:
         return None
 
 
+def current_device() -> int:
+    """Index of the CUDA device bound to this process."""
+    return torch.cuda.current_device()
+
+
 def get_device_count() -> int:
     """Return the number of CUDA GPUs."""
     return torch.cuda.device_count() if is_available() else 0

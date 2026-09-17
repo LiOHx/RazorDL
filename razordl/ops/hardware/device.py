@@ -23,6 +23,23 @@ def get_available_device() -> str:
     return "cpu"
 
 
+def get_torch_device():
+    """Return the torch device namespace (``torch.cuda`` / ``torch.mps`` ...).
+
+    Falls back to ``torch.cuda`` when torch has no namespace for the active
+    device type, matching the historical behaviour of the FSDP2 helpers.
+    """
+    name = get_available_device()
+    return getattr(torch, name, torch.cuda)
+
+
+def get_device_id() -> int:
+    """Return the index of the current accelerator (0 for mps / cpu)."""
+    if get_available_device() == "cuda":
+        return _backend("cuda").current_device()
+    return 0
+
+
 def get_device_count() -> int:
     """Return the number of available accelerators (GPUs, etc.)."""
     device = get_available_device()
