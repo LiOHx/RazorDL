@@ -74,13 +74,21 @@ def _create_experiment_dir(outputs_dir: str) -> str:
     return exp_dir
 
 
-def _resolve_experiment(outputs_dir, resume_mode, resume_from, project_dir):
+def _resolve_experiment(outputs_dir, resume_mode, resume_from, project_dir, init_from=None):
     """Determine the experiment directory with snapshot/hash logic.
 
     Returns ``(exp_dir, is_new)``.
     """
     logger = logging.getLogger(__name__)
     outputs_dir = os.path.abspath(outputs_dir)
+
+    if init_from:
+        # A fork is always a fresh experiment: weights come from init_from,
+        # step counter and optimizer start at zero, so resuming the latest
+        # experiment here would silently turn the fork into a resume.
+        exp_dir = _create_experiment_dir(outputs_dir)
+        logger.info("[EXP] New experiment (init_from fork): %s", exp_dir)
+        return exp_dir, True
 
     if resume_mode == "manual":
         if resume_from:
@@ -181,9 +189,10 @@ def main(
     _log_hardware_capabilities(config, logger)
 
     project_dir = os.getcwd()
-    outputs_dir = getattr(config.trainer_config, "outputs_dir", "./outputs")
-    resume_mode = getattr(config.trainer_config, "resume_mode", "auto")
-    resume_from = getattr(config.trainer_config, "resume_from", None)
+    outputs_dir = config.trainer_config.outputs_dir
+    resume_mode = config.trainer_config.resume_mode
+    resume_from = config.trainer_config.resume_from
+    init_from = config.trainer_config.init_from
 
     # If output_dir is already set (e.g. from a code snapshot), use it directly
     if config.trainer_config.output_dir:
@@ -196,7 +205,9 @@ def main(
         else:
             logger.info("[EXP] Using pre-set output_dir: %s", exp_dir)
     else:
-        exp_dir, is_new = _resolve_experiment(outputs_dir, resume_mode, resume_from, project_dir)
+        exp_dir, is_new = _resolve_experiment(
+            outputs_dir, resume_mode, resume_from, project_dir, init_from=init_from
+        )
         if is_new:
             provenance = snapshot_code(exp_dir, project_dir)
             logger.info("[EXP] Code snapshot saved to %s/code/", exp_dir)
@@ -207,11 +218,11 @@ def main(
     config.trainer_config.output_dir = os.path.abspath(exp_dir)
     config.data_config.train_data_path = os.path.abspath(config.data_config.train_data_path)
 
-    # init_from: fork from a checkpoint — load model weights but reset step/optimizer
-    init_from = getattr(config.trainer_config, 'init_from', None)
+    # init_from: fork from a checkpoint — weights load, step/optimizer reset.
+    # The checkpoint path itself is resolved by BaseTrainer on the workers
+    # (get_resume_checkpoint_dir); main() only decides the experiment dir.
     if init_from:
-        config.trainer_config.resume_checkpoint_dir = os.path.abspath(init_from)
-        logger.info("[EXP] Forking model weights from: %s", init_from)
+        logger.info("[EXP] Forking model weights from: %s", os.path.abspath(init_from))
     # --- experiment management end ---
 
     logger.info("*" * 100)

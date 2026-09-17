@@ -187,7 +187,8 @@ def read_info(ckpt_dir: str) -> dict[str, Any] | None:
         return None
 
 
-def _has_required_content(ckpt_dir: str) -> bool:
+def _scan_content(ckpt_dir: str) -> tuple[bool, bool]:
+    """Return ``(has_model, has_optimizer)`` for the checkpoint tree."""
     has_model = False
     has_optimizer = False
     for _root, dirs, files in os.walk(ckpt_dir):
@@ -196,7 +197,22 @@ def _has_required_content(ckpt_dir: str) -> bool:
             has_model = True
         if "optimizer.pt" in files:
             has_optimizer = True
+    return has_model, has_optimizer
+
+
+def _has_required_content(ckpt_dir: str) -> bool:
+    has_model, has_optimizer = _scan_content(ckpt_dir)
     return has_model and has_optimizer
+
+
+def has_model_weights(ckpt_dir: str) -> bool:
+    """True if the tree holds a full model or an adapter file.
+
+    Weaker than :func:`is_complete`: ``init_from`` only needs weights, so a
+    ``model_only`` save (``save_steps``) or the experiment root is a valid
+    fork source even though it carries no optimizer state.
+    """
+    return _scan_content(ckpt_dir)[0]
 
 
 def is_complete(ckpt_dir: str, require_marker: bool = True) -> bool:

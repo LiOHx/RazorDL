@@ -101,4 +101,4 @@ Smoke-test recipes for SFT / GRPO / OPD / video_embedding live in `@docs/testing
 
 - Branch: `master`, push to `origin/master`.
 - Commit message: `type: short description`.
-- Append `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` to every commit.
+- Append `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` to every commit.

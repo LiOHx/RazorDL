@@ -49,6 +49,7 @@ Users configure `outputs_dir` (parent) + `resume_mode: auto|manual`. `output_dir
 - `resume_mode: auto` — scan `outputs/` for the latest experiment, compare `code_hash` + razordl version against `provenance.json`; hash match + incomplete → auto-resume; hash mismatch → new experiment with warning.
 - `resume_mode: manual` — always new experiment unless `resume_from` points to an existing one.
 - `init_from: <checkpoint-path>` — fork a new experiment from a checkpoint: weights load, optimizer + step counter start fresh, always new experiment dir.
+- **IMPORTANT — `trainer_config.resume_checkpoint_dir` has ONE writer: `BaseTrainer.get_resume_checkpoint_dir()` on the worker.** `main()` decides the experiment dir only. When the driver also wrote the field, the worker's scan of the fresh fork dir overwrote `init_from` with `None` and forks silently trained from base weights.
 - **Copy recovery:** copying `code/` to another location works because `config.yaml`'s `output_dir` already points to the original experiment dir → `razordl train` resumes from the original checkpoints.
 
 `razordl diff` compares experiment code / config (current vs latest, current vs specified, A vs B). Output shows file changes (A/M/D), YAML config key diffs, and git provenance.

@@ -131,8 +131,18 @@ class ParallelModelGroup(BaseModelGroup):
                 if unexpected:
                     logger.warning("[RESUME WARNING] Unexpected keys when loading full model: %s", unexpected)
                 logger.info("[RESUME] Full model preloaded (%s tensors)", len(model_state_dict))
-        elif self.local_rank == 0 and self.config.trainer_config.resume_checkpoint_dir:
-            logger.warning("[RESUME WARNING] No model file found in checkpoint")
+        elif self.config.trainer_config.resume_checkpoint_dir:
+            if self.config.trainer_config.init_from:
+                # A fork that finds no weights would silently train from the
+                # base model.  Typical cause: forking across presets whose
+                # model_group_name differs (model_group vs policy_model_group).
+                raise RuntimeError(
+                    f"[INIT_FROM] No model/adapter file for model group "
+                    f"{self.model_group_name!r} under "
+                    f"{self.config.trainer_config.resume_checkpoint_dir}"
+                )
+            if self.local_rank == 0:
+                logger.warning("[RESUME WARNING] No model file found in checkpoint")
 
         return model
 
@@ -232,7 +242,7 @@ class ParallelModelGroup(BaseModelGroup):
         return loss if scaler is None else scaler.scale(loss)
 
     def _resume_optimizer_checkpoint(self, optimizer):
-        if getattr(self.config.trainer_config, "init_from", None):
+        if self.config.trainer_config.init_from:
             logger.info("[INIT_FROM] Skipping optimizer state — starting fresh")
             return optimizer
         self._resume_grad_scaler()

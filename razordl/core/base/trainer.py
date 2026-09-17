@@ -121,6 +121,27 @@ class BaseTrainer():
 
 
     def get_resume_checkpoint_dir(self):
+        """Resolve ``trainer_config.resume_checkpoint_dir`` — the ONLY writer.
+
+        ``init_from`` wins: the fork source is validated and used as-is.
+        Otherwise the experiment dir is scanned for the latest complete
+        ``checkpoint_*``.  The driver never sets this field; it only picks
+        the experiment dir, so a scan of a fresh fork dir cannot clobber
+        the fork source.
+        """
+        init_from = self.trainer_config.init_from
+        if init_from:
+            init_from = os.path.abspath(init_from)
+            if not os.path.isdir(init_from):
+                raise FileNotFoundError(f"[INIT_FROM] checkpoint dir does not exist: {init_from}")
+            if not ckpt_info.has_model_weights(init_from):
+                raise ValueError(
+                    f"[INIT_FROM] no model.safetensors / adapter_model.safetensors under {init_from}"
+                )
+            logger.info(f"[INIT_FROM] Loading weights from {init_from}")
+            self.config.trainer_config.resume_checkpoint_dir = init_from
+            return
+
         output_dir = self.config.trainer_config.output_dir
         max_resume_step = -1
 
@@ -144,7 +165,7 @@ class BaseTrainer():
 
 
     def get_resume_state(self):
-        if getattr(self.config.trainer_config, 'init_from', None):
+        if self.trainer_config.init_from:
             logger.info("[INIT_FROM] Starting from step 0 (forked from checkpoint)")
             logger.info("[INIT_FROM] Seed: %s", self.trainer_config.seed)
             return ResumeState.from_seed(self.trainer_config.seed)
