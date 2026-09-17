@@ -14,6 +14,7 @@ except ImportError:
     from ray.air.config import ScalingConfig
 
 from razordl.core.base import logging
+from razordl.core.base import checkpoint_info as ckpt_info
 from razordl.core.base.workgroup import BaseWorkGroup
 from razordl.core.engine.common.trainer import EngineTrainer
 from razordl.ops.hardware.device import check_device_compatibility
@@ -227,10 +228,18 @@ def main(
     config.data_config.train_data_path = os.path.abspath(config.data_config.train_data_path)
 
     # init_from: fork from a checkpoint — weights load, step/optimizer reset.
-    # The checkpoint path itself is resolved by BaseTrainer on the workers
-    # (get_resume_checkpoint_dir); main() only decides the experiment dir.
+    # The checkpoint path is resolved into resume_checkpoint_dir by BaseTrainer
+    # on the workers (get_resume_checkpoint_dir); main() only decides the
+    # experiment dir.  Validating here as well fails fast, before Ray starts.
     if init_from:
-        logger.info("[EXP] Forking model weights from: %s", os.path.abspath(init_from))
+        init_from = os.path.abspath(init_from)
+        if not os.path.isdir(init_from):
+            raise FileNotFoundError(f"[INIT_FROM] checkpoint dir does not exist: {init_from}")
+        if not ckpt_info.has_model_weights(init_from):
+            raise ValueError(
+                f"[INIT_FROM] no model.safetensors / adapter_model.safetensors under {init_from}"
+            )
+        logger.info("[EXP] Forking model weights from: %s", init_from)
     # --- experiment management end ---
 
     logger.info("*" * 100)

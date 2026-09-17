@@ -31,6 +31,15 @@ cd /tmp/test_sft
 bash run.sh
 ```
 
+### Experiment-management checks (SFT, single GPU, ~35 s each)
+
+Run the SFT flow above once with `save_steps: 5`, `save_ckpt_steps: 10`, `grad_accum: 1`, `num_epochs: 4` (20 steps on the bundled 5-sample `data/`). Then:
+
+- **Fork:** copy `config.yaml` + `data/` to a new dir, set `init_from: <exp>/checkpoint_000010`. Log must contain `[EXP] New experiment (init_from fork)`, `[INIT_FROM] Loading weights from`, `[RESUME] Preloading LoRA adapter` and `[TRAINER] Training starting from scratch`. A bad path raises `FileNotFoundError` on the driver before Ray starts.
+- **Copy recovery:** `cp -r <exp>/code /tmp/x && cp -r data /tmp/x && cd /tmp/x && razordl train ...` → `[EXP] Using pre-set output_dir` and `[RESUME] Found checkpoint at step 20`; nothing new is created under `/tmp/x`.
+- **Custom outputs dir:** `outputs_dir: ./runs`, run once, confirm `runs/<exp>/code/runs` does not exist; delete `runs/<exp>/checkpoint_info.json` (simulates an interrupted run) and run again → `[EXP] Auto-resuming from ... (code + razordl hash match)`.
+- **Backend switch:** `parallel_backend: ddp` + `resume_mode: manual` + `resume_from: <exp>` → `ValueError: [RESUME] parallel_backend mismatch`, zero training steps.
+
 ---
 
 ## GRPO preset
