@@ -134,16 +134,26 @@ def fsdp2_load_full_state_dict(model: torch.nn.Module, full_state: dict, device_
             buf.data = buf.data.to(get_device_id())
 
 
+def _reshard_after_forward(fsdp_mesh) -> bool:
+    """Reshard after forward only when there is more than one shard.
+
+    With a single rank there is nothing to gather or free, so resharding just
+    adds per-layer bookkeeping.  Keeping fully_shard itself (rather than
+    skipping FSDP2 at world_size == 1) preserves the MixedPrecisionPolicy
+    cast and the checkpoint / offload code paths.
+    """
+    return int(fsdp_mesh.shape[-1]) > 1
+
+
 def model_to_fsdp2(model, device_mesh, mp_policy) -> None:
     fsdp_mesh = device_mesh
     cpu_offload = None 
-    reshard_after_forward = True
 
     fsdp_kwargs = {
         "mesh": fsdp_mesh,
         "mp_policy": mp_policy,
         "offload_policy": cpu_offload ,
-        "reshard_after_forward": reshard_after_forward,
+        "reshard_after_forward": _reshard_after_forward(fsdp_mesh),
         "shard_placement_fn": get_shard_placement_fn(fsdp_size=fsdp_mesh.shape[-1]),
     }
     full_state = model.state_dict()
@@ -186,7 +196,7 @@ def model_to_fsdp2_with_lora(model, device_mesh, mp_policy) -> None:
         "mesh": fsdp_mesh,
         "mp_policy": mp_policy,
         "offload_policy": None,
-        "reshard_after_forward": True,
+        "reshard_after_forward": _reshard_after_forward(fsdp_mesh),
         "shard_placement_fn": get_shard_placement_fn(fsdp_size=fsdp_mesh.shape[-1]),
     }
     
