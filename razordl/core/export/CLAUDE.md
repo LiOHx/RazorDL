@@ -18,7 +18,6 @@ AST helpers in `ast_utils.py`:
 
 - `extract_class(source, class_name)` — full class definition by line range
 - `extract_function(source, function_name)` — top-level / helper function by line range
-- `extract_standalone_classes(source)` — top-level classes only
 - `extract_imports(source)` — all import statements (single- and multi-line)
 - `replace_ident(source, old, new)` — word-boundary rename (does not match substrings)
 

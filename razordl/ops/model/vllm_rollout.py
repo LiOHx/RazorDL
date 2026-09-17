@@ -43,14 +43,6 @@ def _load_weights_from_file(worker_self, file_path: str):
     return len(state_dict)
 
 
-def get_vllm_max_lora_rank(lora_rank: int) -> int:
-    valid = [8, 16, 32, 64, 128, 256, 320, 512]
-    for r in valid:
-        if lora_rank <= r:
-            return r
-    raise ValueError(f"lora_rank must be <= {valid[-1]}, got {lora_rank}")
-
-
 @dataclass
 class InferenceConfig:
     model: str = ""

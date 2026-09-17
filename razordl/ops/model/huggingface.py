@@ -1,47 +1,6 @@
-import re
 import os
 
 import torch
-from transformers import PreTrainedModel
-
-
-def convert_weight_keys(state_dict: dict[str, torch.Tensor], model: PreTrainedModel):
-    """
-    这是一个用于模型权重键名对齐的工具函数，主要用于处理 Hugging Face Transformers 库中某些模型因结构更新或命名变更导致的权重加载不匹配问题（注释中提到的 PR #38385 也佐证了这一点，通常与 Qwen2 或 Llama 等模型的不同实现版本有关）。
-    """
-    # convert state dict keys: https://github.com/huggingface/transformers/pull/38385
-    if not hasattr(model, "_checkpoint_conversion_mapping"):
-        return state_dict
-
-    reverse_key_mapping = {v: k for k, v in model._checkpoint_conversion_mapping.items()}
-    original_weights = {}
-    for key, value in state_dict.items():
-        for pattern, replacement in reverse_key_mapping.items():
-            replacement = replacement.lstrip("^")  # strip off un-needed chars and patterns
-            replacement = re.sub(r"\(.*\)", "", replacement)
-            key, n_replace = re.subn(pattern, replacement, key)
-            # Early exit of the loop
-            if n_replace > 0:
-                break
-
-        original_weights[key] = value
-
-    return original_weights
-
-
-def resolve_compute_dtype(precision: str = "auto"):
-    """Resolve a `precision` config value into the *compute* dtype.
-
-    This is what the forward/backward runs in -- i.e. what FSDP2 gets as
-    `MixedPrecisionPolicy(param_dtype=...)`.  To load weights, use
-    :func:`resolve_storage_dtype` instead: under fp16 the two differ.
-
-    Delegates to `razordl.ops.hardware.precision` -- the single source of truth
-    for dtype selection.  Never probe capabilities here.
-    """
-    from razordl.ops.hardware.precision import resolve_precision, to_torch_dtype
-
-    return to_torch_dtype(resolve_precision(precision))
 
 
 def resolve_storage_dtype(precision: str = "auto", *, trainable: bool = True):
@@ -49,7 +8,8 @@ def resolve_storage_dtype(precision: str = "auto", *, trainable: bool = True):
 
     Equals the compute dtype except under fp16, where parameters stay fp32 as
     master weights.  Model loading must use this so every parameter of a
-    sharded unit shares one dtype (FSDP2 asserts on mixed dtypes).
+    sharded unit shares one dtype (FSDP2 asserts on mixed dtypes).  The
+    compute dtype itself comes from ``ops.hardware.precision.to_torch_dtype``.
 
     ``trainable=False`` (reference / teacher models) skips the promotion: with
     no optimizer there is nothing to keep a master copy for, and loading at the

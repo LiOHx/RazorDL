@@ -20,16 +20,6 @@ def extract_function(source: str, function_name: str) -> str:
     raise ValueError(f"Function {function_name} not found in source")
 
 
-def extract_standalone_classes(source: str) -> dict[str, str]:
-    tree = ast.parse(source)
-    lines = source.splitlines()
-    result = {}
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef):
-            result[node.name] = "\n".join(lines[node.lineno - 1 : node.end_lineno])
-    return result
-
-
 def replace_ident(source: str, old: str, new: str) -> str:
     return re.sub(r"\b" + re.escape(old) + r"\b", new, source)
 
