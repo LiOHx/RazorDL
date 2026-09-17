@@ -10,7 +10,7 @@ from io import BytesIO
 import numpy as np
 from PIL import Image
 
-from razordl.core.base import logging
+import logging
 
 logger = logging.getLogger(__name__)
 
