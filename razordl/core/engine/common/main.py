@@ -247,7 +247,11 @@ def main(
                 "TOKENIZERS_PARALLELISM": "true",
                 "NCCL_DEBUG": "WARN",
                 "VLLM_LOGGING_LEVEL": "WARN",
-                "PYTORCH_CUDA_ALLOC_CONF": "",
+                # Inherit the driver's allocator settings (e.g. expandable_segments:True,
+                # the anti-fragmentation switch a 22 GB single card needs most). Blanking
+                # it here dropped every user-set value; ray_kwargs.ray_init.runtime_env
+                # .env_vars still overrides.
+                "PYTORCH_CUDA_ALLOC_CONF": os.environ.get("PYTORCH_CUDA_ALLOC_CONF", ""),
             }
         }
         ray_init_kwargs = config.trainer_config.ray_kwargs.get("ray_init", {})
