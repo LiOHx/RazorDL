@@ -324,7 +324,7 @@ class ParallelModelGroup(BaseModelGroup):
             if self.scaler is not None:
                 self.scaler.unscale_(self.optimizer)
 
-            max_grad_norm = getattr(self.model_group_config.optimizer_config, "max_grad_norm", None)
+            max_grad_norm = self.model_group_config.optimizer_config.max_grad_norm
             if max_grad_norm is not None:
                 grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_grad_norm)
                 grad_norm = grad_norm.item()

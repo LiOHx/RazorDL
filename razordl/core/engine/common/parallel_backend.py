@@ -105,7 +105,7 @@ class FSDP2Backend(ParallelBackend):
         world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.model_group.device_mesh = create_device_mesh(world_size=world_size, fsdp_size=-1)
 
-        sp_size = getattr(mc, "sp_size", 1)
+        sp_size = mc.sp_size
         self.model_group.sp_size = sp_size
         self.model_group.sp_group = None
         if sp_size > 1:
@@ -135,7 +135,7 @@ class FSDP2Backend(ParallelBackend):
             if mc.enable_gradient_checkpointing:
                 self.model_group._enable_gradient_checkpointing_after_wrap(model)
 
-            if getattr(mc, "enable_activation_offload", False):
+            if mc.enable_activation_offload:
                 from razordl.ops.parallel.activation import enable_activation_offloading
 
                 enable_activation_offloading(

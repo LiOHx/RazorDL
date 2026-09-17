@@ -111,20 +111,10 @@ def scan_files(ckpt_dir: str, compute_checksums: bool = False) -> dict[str, dict
     return result
 
 
-def _get_topology(config) -> dict[str, int]:
+def _get_topology(config) -> dict[str, Any]:
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
-    sp_size = 1
-    data_cfg = getattr(config, "data_config", None)
-    if data_cfg is not None:
-        sp_size = getattr(data_cfg, "sp_size", 1) or 1
-    if sp_size == 1:
-        wg_cfg = getattr(config, "worker_group_config", None)
-        if wg_cfg is not None:
-            mg_cfg = getattr(wg_cfg, "model_group_config", None)
-            if mg_cfg is not None:
-                model_cfg = getattr(mg_cfg, "model_config", None)
-                if model_cfg is not None:
-                    sp_size = getattr(model_cfg, "sp_size", 1) or 1
+    model_cfg = config.worker_group_config.model_group_config.model_config
+    sp_size = config.data_config.sp_size or model_cfg.sp_size or 1
     return {"world_size": world_size, "sp_size": sp_size}
 
 
@@ -154,7 +144,7 @@ def build_info(
         "timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
         "elapsed_seconds": round(float(elapsed_seconds), 2),
         "topology": _get_topology(config),
-        "seed": int(getattr(getattr(config, "trainer_config", None), "seed", 0) or 0),
+        "seed": int(config.trainer_config.seed or 0),
         "provenance": {
             "framework_version": get_framework_version(),
             "git_commit": get_git_commit(),

@@ -198,7 +198,7 @@ class BaseTrainer():
         saved_topology = info.get("topology") or {}
         current = {
             "world_size": int(os.environ.get("WORLD_SIZE", "1")),
-            "sp_size": getattr(self.config.data_config, "sp_size", 1) or 1,
+            "sp_size": self.config.data_config.sp_size or 1,
         }
         for key, current_value in current.items():
             saved_value = saved_topology.get(key)
@@ -214,7 +214,7 @@ class BaseTrainer():
 
         dp_rank = None
         dp_size = None
-        sp_size = getattr(self.config.data_config, "sp_size", 1)
+        sp_size = self.config.data_config.sp_size
         if sp_size > 1:
             import torch.distributed as dist
             from razordl.ops.parallel.sequence_parallel import get_sp_data_parallel_info
@@ -263,7 +263,7 @@ class BaseTrainer():
                 resumed_from=self._resumed_from,
                 ckpt_dir=checkpoint_dir,
                 kind="model_only",
-                compute_checksums=getattr(self.trainer_config, "compute_checksums", False),
+                compute_checksums=self.trainer_config.compute_checksums,
             )
             ckpt_info.write_info(checkpoint_dir, info)
 
@@ -311,7 +311,7 @@ class BaseTrainer():
                 resumed_from=self._resumed_from,
                 ckpt_dir=tmp_dir,
                 kind="checkpoint",
-                compute_checksums=getattr(self.trainer_config, "compute_checksums", False),
+                compute_checksums=self.trainer_config.compute_checksums,
             )
             ckpt_info.write_info(tmp_dir, info)
             if os.path.exists(checkpoint_dir):

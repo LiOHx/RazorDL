@@ -24,7 +24,7 @@ class EngineTrainer(BaseTrainer):
         self.workgroup = self.workgroup_class(self.config)
         self.train_dataset = self.train_dataset_class(self.config)
         self.dataset_processor = self.train_dataset.dataset_processor
-        sp_size = getattr(self.config.data_config, "sp_size", 1)
+        sp_size = self.config.data_config.sp_size
         self.train_collator = self.train_collator_class(self.dataset_processor, sp_size)
 
     def update_step(self, input_dict: TensorDict, step: int):

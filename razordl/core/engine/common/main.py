@@ -47,11 +47,7 @@ def _log_hardware_capabilities(config, logger) -> None:
         info["flash_attention_2"],
     )
 
-    model_config = getattr(
-        getattr(config, "worker_group_config", None), "model_group_config", None
-    )
-    model_config = getattr(model_config, "model_config", None)
-    requested = getattr(model_config, "precision", "auto")
+    requested = config.worker_group_config.model_group_config.model_config.precision
     resolved = resolve_precision(requested)
     logger.info("[HW] precision: %s -> %s", requested, resolved)
     if resolved == "fp16":

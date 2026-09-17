@@ -44,7 +44,7 @@ class SFTDataset(Dataset):
         self.config = config
         self.data_config = config.data_config
         self.max_length = getattr(self.data_config, "max_length", 1024)
-        self.sp_size = getattr(self.data_config, "sp_size", 1)
+        self.sp_size = self.data_config.sp_size
         self.lazy_tokenize = getattr(
             config.worker_group_config.model_group_config.processor_config,
             "lazy_tokenize",
