@@ -60,6 +60,7 @@ class DictSerializable:
 class BaseDataConfig(DictSerializable):
     train_data_path: str
     dataset_processor_path: str
+    sp_size: int = 1  # Ulysses sequence-parallel size; mirrored in BaseModelConfig
 
 
 
@@ -77,7 +78,12 @@ class BaseAdapterConfig(DictSerializable):
     use_adapter: bool = False
     adapter_name: str = "default"
     adapter_path: str = None
-    task_type: str = None  # PEFT task type, e.g. "CAUSAL_LM", "FEATURE_EXTRACTION"
+    lora_r: int = 8
+    lora_alpha: int = 16
+    lora_dropout: float = 0.05
+    lora_target_modules: list = field(default_factory=lambda: ["q_proj", "v_proj", "k_proj", "o_proj"])
+    modules_to_save: list[str] | None = None
+    task_type: str = None  # PEFT task type, e.g. "CAUSAL_LM", "FEATURE_EXTRACTION". None = PEFT auto-detect
 
 
 
@@ -95,6 +101,7 @@ class BaseModelConfig(DictSerializable):
     parallel_backend: str = "fsdp2"  # "fsdp2" | "ddp"
     chunked_loss: bool = False  # compute loss in chunks to avoid giant logits tensor
     chunk_size: int = 2048      # tokens per chunk when chunked_loss=True
+    is_trainable: bool = True   # False = frozen model, no optimizer (e.g. GRPO reference, OPD teacher)
     adapter_config: BaseAdapterConfig = field(default_factory=BaseAdapterConfig)
 
 

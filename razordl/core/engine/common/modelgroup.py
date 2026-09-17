@@ -54,7 +54,7 @@ class ParallelModelGroup(BaseModelGroup):
 
     @property
     def is_trainable(self) -> bool:
-        return getattr(self.model_group_config.model_config, "is_trainable", True)
+        return self.model_group_config.model_config.is_trainable
 
     def get_device(self):
         if torch.cuda.is_available():

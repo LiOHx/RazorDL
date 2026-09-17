@@ -13,6 +13,12 @@ from razordl.core.base.config import (
     field
 )
 
+# All shared fields (LoRA, precision, parallel_backend, is_trainable, experiment
+# management, ...) live on the Base* dataclasses in core/base/config.py.  These
+# subclasses only re-type the nested defaults so from_dict builds the variant
+# tree; presets subclass them to add task-specific keys.
+
+
 @dataclass
 class DataConfig(BaseDataConfig):
     pass
@@ -25,17 +31,11 @@ class ProcessorConfig(BaseProcessorConfig):
 
 @dataclass
 class AdapterConfig(BaseAdapterConfig):
-    lora_r: int = 8
-    lora_alpha: int = 16
-    lora_dropout: float = 0.05
-    lora_target_modules: list = field(default_factory=lambda: ["q_proj", "v_proj", "k_proj", "o_proj"])
-    modules_to_save: list[str] | None = None
-    task_type: str = None
+    pass
 
 
 @dataclass
 class ModelConfig(BaseModelConfig):
-    is_trainable: bool = True  # False = frozen model, no optimizer (e.g. reference in GRPO)
     adapter_config: AdapterConfig = field(default_factory=AdapterConfig)
 
 
