@@ -377,22 +377,27 @@ class BaseTrainer():
                     with open(step_info_path, "a") as f:
                         f.write(json.dumps(step_info, ensure_ascii=False) + "\n")
 
-            if (
+            full_ckpt_due = (
+                self.config.trainer_config.save_checkpoint_steps > 0
+                and current_step % self.config.trainer_config.save_checkpoint_steps == 0
+            )
+            model_only_due = (
                 self.config.trainer_config.save_model_steps > 0
                 and current_step % self.config.trainer_config.save_model_steps == 0
-            ):
-                checkpoint_dir = os.path.join(self.output_dir, f"checkpoint_{self.completed_step:06d}")
+            )
+            checkpoint_dir = os.path.join(self.output_dir, f"checkpoint_{self.completed_step:06d}")
+
+            # Both saves target the same checkpoint_{step} dir and the full
+            # checkpoint is a superset, so on a common multiple only the full
+            # save runs (it used to write the model twice and rmtree in between).
+            if model_only_due and not full_ckpt_due:
                 if local_rank == 0:
                     os.makedirs(checkpoint_dir, exist_ok=True)
                 if torch.distributed.is_available() and torch.distributed.is_initialized():
                     torch.distributed.barrier()
                 self.save_model_and_processor(checkpoint_dir)
 
-            if (
-                self.config.trainer_config.save_checkpoint_steps > 0
-                and current_step % self.config.trainer_config.save_checkpoint_steps == 0
-            ):
-                checkpoint_dir = os.path.join(self.output_dir, f"checkpoint_{self.completed_step:06d}")
+            if full_ckpt_due:
                 self._save_checkpoint_atomic(checkpoint_dir, self.completed_step)
 
         logger.info(f"[TRAINER] Training completed")
