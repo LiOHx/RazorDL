@@ -160,6 +160,10 @@ def snapshot_code(exp_dir: str, project_dir: str):
 
         with open(snapshot_config) as f:
             cfg = yaml.safe_load(f) or {}
+        # flat_config treats output_dir WITHOUT outputs_dir as the legacy key,
+        # so a legacy-style config must gain outputs_dir before the pin lands.
+        if "outputs_dir" not in cfg:
+            cfg["outputs_dir"] = cfg.get("output_dir", "./outputs")
         cfg["output_dir"] = os.path.abspath(exp_dir)
         with open(snapshot_config, "w") as f:
             yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False)

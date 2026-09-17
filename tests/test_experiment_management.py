@@ -115,3 +115,34 @@ def test_resolve_experiment_init_from_always_creates_new_dir(tmp_path):
     assert is_new
     assert os.path.abspath(exp_dir) != os.path.abspath(latest)
     assert os.path.isdir(exp_dir)
+
+
+# --- copy recovery: snapshot output_dir pin ---------------------------------------
+
+
+def _flat_to_trainer_config(flat):
+    config_dict = build_single_model_config_dict(
+        {"model": "dummy-model", **flat},
+        data_config={"train_data_path": "./data", "max_length": 16, "sp_size": 1, "dataset_processor_path": ""},
+        model_default="dummy-model",
+        processor_max_length=16,
+    )
+    return config_dict["trainer_config"]
+
+
+def test_snapshot_output_dir_pin_passes_through():
+    tc = _flat_to_trainer_config({"outputs_dir": "./outputs", "output_dir": "/abs/exp/2026-01-01_00-00-00"})
+    assert tc["outputs_dir"] == "./outputs"
+    assert tc["output_dir"] == "/abs/exp/2026-01-01_00-00-00"
+
+
+def test_user_config_has_no_output_dir():
+    tc = _flat_to_trainer_config({"outputs_dir": "./outputs"})
+    assert tc["output_dir"] is None
+
+
+def test_legacy_output_dir_migrates_to_outputs_dir():
+    with pytest.warns(DeprecationWarning):
+        tc = _flat_to_trainer_config({"output_dir": "./old_outputs"})
+    assert tc["outputs_dir"] == "./old_outputs"
+    assert tc["output_dir"] is None

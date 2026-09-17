@@ -71,6 +71,7 @@ def build_single_model_config_dict(
     init_from = d.get("init_from", None)
 
     # Legacy support: auto-migrate old output_dir → outputs_dir
+    output_dir = None
     if "output_dir" in d and "outputs_dir" not in d:
         import warnings
         warnings.warn(
@@ -80,6 +81,12 @@ def build_single_model_config_dict(
             DeprecationWarning,
         )
         outputs_dir = d["output_dir"]
+    elif "output_dir" in d:
+        # output_dir NEXT TO outputs_dir is only ever written by
+        # ops/snapshot.py::snapshot_code into <exp>/code/config.yaml.  It pins
+        # the run to the original experiment dir so a copied code/ snapshot
+        # resumes those checkpoints instead of starting a new experiment.
+        output_dir = d["output_dir"]
 
     # Legacy support: auto_resume → resume_mode
     if "auto_resume" in d and "resume_mode" not in d:
@@ -188,7 +195,7 @@ def build_single_model_config_dict(
             "resume_mode": resume_mode,
             "resume_from": resume_from,
             "init_from": init_from,
-            "output_dir": None,  # set by engine main() at experiment creation time
+            "output_dir": output_dir,  # None unless pinned by a code snapshot; else set by main()
             "resume_checkpoint_dir": resume_checkpoint_dir,
             "log_info_steps": log_steps * grad_accum,
             "save_model_steps": save_steps * grad_accum,
