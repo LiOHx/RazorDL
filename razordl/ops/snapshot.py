@@ -34,11 +34,27 @@ def _should_include(filepath: str) -> bool:
     return False
 
 
-def compute_code_hash(project_dir: str) -> str:
+def _prune_dirs(root: str, dirs: list[str], exclude_paths) -> list[str]:
+    """Filter ``os.walk`` dirs by the name-based EXCLUDE_DIRS plus absolute paths.
+
+    ``exclude_paths`` carries user-configurable locations (the outputs dir)
+    that a fixed name list cannot know about.
+    """
+    return [
+        d
+        for d in dirs
+        if d not in EXCLUDE_DIRS
+        and not d.startswith(".")
+        and os.path.abspath(os.path.join(root, d)) not in exclude_paths
+    ]
+
+
+def compute_code_hash(project_dir: str, exclude_paths=()) -> str:
     """Compute a combined SHA256 hash of all relevant project files."""
+    exclude_paths = frozenset(os.path.abspath(p) for p in exclude_paths)
     h = hashlib.sha256()
     for root, dirs, files in os.walk(project_dir):
-        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS and not d.startswith(".")]
+        dirs[:] = _prune_dirs(root, dirs, exclude_paths)
         for fname in sorted(files):
             fpath = os.path.join(root, fname)
             rel = os.path.relpath(fpath, project_dir)
@@ -130,19 +146,24 @@ def _pip_freeze() -> str:
         return ""
 
 
-def snapshot_code(exp_dir: str, project_dir: str):
+def snapshot_code(exp_dir: str, project_dir: str, exclude_paths=()):
     """Copy project code into ``exp_dir/code/`` for reproducibility.
 
     After copying, the config.yaml in the snapshot has its ``output_dir``
     field hard-coded to the experiment directory absolute path, so the
     snapshot can be copied elsewhere and still point back to the original
     experiment's checkpoints.
+
+    ``exclude_paths``: absolute directories to skip in addition to
+    EXCLUDE_DIRS — pass the configured outputs dir so previous experiments
+    are never copied into the snapshot or folded into the code hash.
     """
+    exclude_paths = frozenset(os.path.abspath(p) for p in exclude_paths)
     code_dir = os.path.join(exp_dir, "code")
     os.makedirs(code_dir, exist_ok=True)
 
     for root, dirs, files in os.walk(project_dir):
-        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS and not d.startswith(".")]
+        dirs[:] = _prune_dirs(root, dirs, exclude_paths)
         rel_root = os.path.relpath(root, project_dir)
         target_dir = os.path.join(code_dir, rel_root) if rel_root != "." else code_dir
         os.makedirs(target_dir, exist_ok=True)
@@ -171,7 +192,7 @@ def snapshot_code(exp_dir: str, project_dir: str):
     # Write provenance
     config_path = os.path.join(project_dir, "config.yaml")
     provenance = {
-        "code_hash": compute_code_hash(project_dir),
+        "code_hash": compute_code_hash(project_dir, exclude_paths=exclude_paths),
         "config_hash": compute_config_hash(config_path) if os.path.exists(config_path) else None,
         "timestamp": datetime.now().isoformat(),
         **_git_info(project_dir),

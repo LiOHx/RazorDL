@@ -178,3 +178,30 @@ def test_resume_across_backends_raises(tmp_path):
     trainer = _StubTrainer(config)
     with pytest.raises(ValueError, match="parallel_backend mismatch"):
         trainer.get_resume_state()
+
+
+# --- snapshot / hash must not descend into the configured outputs dir ------------
+
+
+def test_snapshot_and_hash_skip_configured_outputs_dir(tmp_path):
+    from razordl.ops.snapshot import compute_code_hash, snapshot_code
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "config.yaml").write_text("outputs_dir: ./runs\n")
+    (project / "main.py").write_text("print('hi')\n")
+    runs = project / "runs"
+    old_exp = runs / "2026-01-01_00-00-00"
+    old_exp.mkdir(parents=True)
+    (old_exp / "step_info.jsonl").write_text('{"step": 1}\n')
+
+    h_before = compute_code_hash(str(project), exclude_paths=[str(runs)])
+    exp_dir = runs / "2026-01-02_00-00-00"
+    exp_dir.mkdir()
+    provenance = snapshot_code(str(exp_dir), str(project), exclude_paths=[str(runs)])
+    h_after = compute_code_hash(str(project), exclude_paths=[str(runs)])
+
+    assert not (exp_dir / "code" / "runs").exists()
+    assert h_before == h_after == provenance["code_hash"]
+    # Without the exclusion the old experiment's jsonl would have leaked into the hash.
+    assert compute_code_hash(str(project)) != h_before

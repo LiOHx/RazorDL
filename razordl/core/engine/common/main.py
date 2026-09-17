@@ -63,6 +63,18 @@ def _log_hardware_capabilities(config, logger) -> None:
         )
 
 
+def _exclude_paths(outputs_dir: str) -> frozenset[str]:
+    """Absolute dirs the code snapshot / hash must never descend into.
+
+    ``outputs_dir`` is user-configurable, so the name-based EXCLUDE_DIRS in
+    ops/snapshot.py cannot cover it.  Including it would copy every previous
+    experiment into each new snapshot and, worse, hash their step_info.jsonl /
+    checkpoint_info.json so the code hash changes every run and auto-resume
+    never matches.
+    """
+    return frozenset({os.path.abspath(outputs_dir)})
+
+
 def _create_experiment_dir(outputs_dir: str) -> str:
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     exp_dir = os.path.join(outputs_dir, ts)
@@ -119,7 +131,7 @@ def _resolve_experiment(outputs_dir, resume_mode, resume_from, project_dir, init
         logger.info("[EXP] New experiment (no provenance in %s): %s", os.path.basename(latest), exp_dir)
         return exp_dir, True
 
-    current_code_hash = compute_code_hash(project_dir)
+    current_code_hash = compute_code_hash(project_dir, exclude_paths=_exclude_paths(outputs_dir))
     razordl_info = _razordl_git_info()
     current_razordl_id = razordl_info.get("razordl_git_commit") or razordl_info.get("razordl_version", "")
     saved_razordl_id = provenance.get("razordl_git_commit") or provenance.get("razordl_version", "")
@@ -197,7 +209,7 @@ def main(
         if is_new:
             logger.info("[EXP] output_dir %s does not exist — creating new experiment", exp_dir)
             os.makedirs(exp_dir, exist_ok=True)
-            snapshot_code(exp_dir, project_dir)
+            snapshot_code(exp_dir, project_dir, exclude_paths=_exclude_paths(outputs_dir))
         else:
             logger.info("[EXP] Using pre-set output_dir: %s", exp_dir)
     else:
@@ -205,7 +217,7 @@ def main(
             outputs_dir, resume_mode, resume_from, project_dir, init_from=init_from
         )
         if is_new:
-            provenance = snapshot_code(exp_dir, project_dir)
+            provenance = snapshot_code(exp_dir, project_dir, exclude_paths=_exclude_paths(outputs_dir))
             logger.info("[EXP] Code snapshot saved to %s/code/", exp_dir)
             logger.info("[EXP] Code hash: %s", provenance["code_hash"])
             if provenance.get("git_commit"):
