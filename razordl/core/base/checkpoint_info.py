@@ -115,7 +115,11 @@ def _get_topology(config) -> dict[str, Any]:
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     model_cfg = config.worker_group_config.model_group_config.model_config
     sp_size = config.data_config.sp_size or model_cfg.sp_size or 1
-    return {"world_size": world_size, "sp_size": sp_size}
+    return {
+        "world_size": world_size,
+        "sp_size": sp_size,
+        "parallel_backend": model_cfg.parallel_backend,
+    }
 
 
 def build_info(

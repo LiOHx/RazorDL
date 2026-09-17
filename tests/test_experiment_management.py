@@ -146,3 +146,35 @@ def test_legacy_output_dir_migrates_to_outputs_dir():
         tc = _flat_to_trainer_config({"output_dir": "./old_outputs"})
     assert tc["outputs_dir"] == "./old_outputs"
     assert tc["output_dir"] is None
+
+
+# --- parallel_backend recorded in topology; switching on resume is refused ------
+
+
+def test_topology_records_parallel_backend(tmp_path):
+    from razordl.core.base import checkpoint_info as ckpt_info
+
+    config = _config(tmp_path, parallel_backend="ddp")
+    info = ckpt_info.build_info(
+        completed_step=1, config=config, elapsed_seconds=0.0, last_step_info=None,
+        resumed_from=None, ckpt_dir=str(tmp_path), kind="checkpoint",
+    )
+    assert info["topology"]["parallel_backend"] == "ddp"
+
+
+def test_resume_across_backends_raises(tmp_path):
+    from razordl.core.base import checkpoint_info as ckpt_info
+
+    exp = tmp_path / "outputs" / "exp"
+    ckpt = _fake_checkpoint(exp / "checkpoint_000010", optimizer=True)
+    saved = _config(tmp_path, parallel_backend="fsdp2")
+    ckpt_info.write_info(str(ckpt), ckpt_info.build_info(
+        completed_step=10, config=saved, elapsed_seconds=0.0, last_step_info=None,
+        resumed_from=None, ckpt_dir=str(ckpt), kind="checkpoint",
+    ))
+
+    config = _config(tmp_path, parallel_backend="ddp")
+    config.trainer_config.output_dir = str(exp)
+    trainer = _StubTrainer(config)
+    with pytest.raises(ValueError, match="parallel_backend mismatch"):
+        trainer.get_resume_state()

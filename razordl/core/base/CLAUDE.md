@@ -25,9 +25,9 @@ Use `DistStats.from_tensor(t)`: it emits `{sum, sum_sq, n, min, max}` and unfold
 
 ## Checkpoint metadata (`checkpoint_info.py`)
 
-`checkpoint_info.json` (rich metadata) replaces the legacy single-integer `complete` file. Schema: `completed_step`, `timestamp`, `elapsed_seconds`, `topology` (`world_size` / `sp_size`), `seed`, `provenance` (`framework_version`, `git_commit`, `config_hash`), `metrics` (latest aggregated `step_info`), `files` (size + optional SHA256), `resumed_from`, `kind` (`checkpoint` or `model_only`).
+`checkpoint_info.json` (rich metadata) replaces the legacy single-integer `complete` file. Schema: `completed_step`, `timestamp`, `elapsed_seconds`, `topology` (`world_size` / `sp_size` / `parallel_backend`), `seed`, `provenance` (`framework_version`, `git_commit`, `config_hash`), `metrics` (latest aggregated `step_info`), `files` (size + optional SHA256), `resumed_from`, `kind` (`checkpoint` or `model_only`).
 
 - `is_complete()` accepts BOTH `checkpoint_info.json` AND legacy `complete` for backwards compatibility.
-- `_check_topology_compat()` **warns**, does not raise, on `world_size` / `sp_size` mismatch on resume.
+- `_check_topology_compat()` **warns** on `world_size` / `sp_size` mismatch on resume, but **raises** on a `parallel_backend` mismatch (FSDP2 and DDP optimizer files are not interchangeable; `topology.parallel_backend` records which wrote it).
 - `trainer_config.compute_checksums: bool = False` — opt-in SHA256 over model files at save time; file sizes are always recorded.
 - `framework_version` is `"razordl"` in this repo. Full-mode exports rewrite the brand constant to `None`, so generated projects log `"unknown"` and never advertise the upstream package name.

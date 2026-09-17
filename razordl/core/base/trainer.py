@@ -189,13 +189,28 @@ class BaseTrainer():
 
 
     def _check_topology_compat(self, ckpt_dir: str) -> None:
-        """Warn (do not raise) if resuming on different world_size or sp_size."""
+        """Warn on world_size / sp_size drift; raise on a parallel_backend switch.
+
+        FSDP2 and DDP write optimizer state in different formats (FQN keys vs
+        integer param indices), so resuming across backends fails deep inside
+        load_optimizer with an opaque error.  Checkpoints written before the
+        key existed skip the check.
+        """
         if int(os.environ.get("LOCAL_RANK", "0")) != 0:
             return
         info = ckpt_info.read_info(ckpt_dir)
         if info is None:
             return
         saved_topology = info.get("topology") or {}
+        saved_backend = saved_topology.get("parallel_backend")
+        current_backend = self.config.worker_group_config.model_group_config.model_config.parallel_backend
+        if saved_backend is not None and saved_backend != current_backend:
+            raise ValueError(
+                f"[RESUME] parallel_backend mismatch: checkpoint {ckpt_dir} was saved with "
+                f"{saved_backend!r}, config now says {current_backend!r}. Optimizer state "
+                f"formats differ between backends; keep the backend, or use init_from "
+                f"to fork weights only."
+            )
         current = {
             "world_size": int(os.environ.get("WORLD_SIZE", "1")),
             "sp_size": self.config.data_config.sp_size or 1,
