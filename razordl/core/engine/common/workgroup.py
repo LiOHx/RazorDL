@@ -6,6 +6,34 @@ import torch
 from razordl.core.base.workgroup import AutoSetModelGroupNameWorkGroup, BaseModelGroup
 
 
+def _with_update_hooks(original):
+    """Wrap an update-step method with the pre/post hooks and the autocast region.
+
+    Guarded by a per-instance depth counter: a preset that overrides
+    ``update_step`` and calls ``super().update_step()`` reaches the parent's
+    wrapped method too, which used to run ``_pre_update_step`` twice and the
+    optimizer step twice per batch. Only the outermost call runs the hooks;
+    nested calls run the original method directly.
+    """
+
+    @functools.wraps(original)
+    def wrapper(self, input_dict, step: int, *args, **kwargs):
+        if getattr(self, "_update_step_depth", 0) > 0:
+            return original(self, input_dict, step, *args, **kwargs)
+        self._update_step_depth = 1
+        try:
+            step_info = {}
+            self._pre_update_step(step)
+            with self._autocast_context():
+                step_info.update(original(self, input_dict, step, *args, **kwargs))
+            step_info.update(self._post_update_step(input_dict, step))
+            return step_info
+        finally:
+            self._update_step_depth = 0
+
+    return wrapper
+
+
 class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
     """Shared update-step wrapper for engine workgroups."""
 
@@ -80,30 +108,8 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
         super().__init_subclass__(**kwargs)
 
         if "update_step" in cls.__dict__:
-            original_update_step = cls.update_step
-
-            @functools.wraps(original_update_step)
-            def wrapper(self, input_dict, step: int, *args, **kwargs):
-                step_info = {}
-                self._pre_update_step(step)
-                with self._autocast_context():
-                    step_info.update(original_update_step(self, input_dict, step, *args, **kwargs))
-                step_info.update(self._post_update_step(input_dict, step))
-                return step_info
-
-            cls.update_step = wrapper
+            cls.update_step = _with_update_hooks(cls.update_step)
             return
 
         if hasattr(cls, "_run_update_step"):
-            original_run_update_step = cls._run_update_step
-
-            @functools.wraps(original_run_update_step)
-            def wrapper(self, input_dict, step: int, *args, **kwargs):
-                step_info = {}
-                self._pre_update_step(step)
-                with self._autocast_context():
-                    step_info.update(original_run_update_step(self, input_dict, step, *args, **kwargs))
-                step_info.update(self._post_update_step(input_dict, step))
-                return step_info
-
-            cls.update_step = wrapper
+            cls.update_step = _with_update_hooks(cls._run_update_step)
