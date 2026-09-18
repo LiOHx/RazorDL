@@ -31,7 +31,6 @@ def export_workgroup(preset_pkg_dir: str) -> str:
         "_sync_lora_weights",
         "_sync_full_weights",
         "asdict_peft",
-        "_remove_left_padding_batch",
         "_extract_rewards",
         "_grpo_reward",
         "_extract_answer_gsm8k",

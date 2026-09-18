@@ -19,6 +19,7 @@ from razordl.ops.loss.distributed import global_token_denominator
 from razordl.ops.hardware.precision import resolve_precision, resolve_vllm_dtype_name
 from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
 from razordl.ops.model.per_token_logp import compute_per_token_log_probs
+from razordl.ops.model.rollout_utils import hf_generate_masks, remove_left_padding_batch
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +284,7 @@ class OPDWorkGroup(_WorkGroup):
         processor = self.policy_model_group.processor
 
         vllm_seed = self.config.trainer_config.seed + step
-        prompt_token_ids = _remove_left_padding_batch(prompt_ids, processor.pad_token_id)
+        prompt_token_ids = remove_left_padding_batch(prompt_ids, processor.pad_token_id)
 
         vllm = self.policy_model_group._vllm_engine
         use_vllm = vllm is not None
@@ -322,10 +323,11 @@ class OPDWorkGroup(_WorkGroup):
                 )
 
             prompt_len = prompt_ids.size(1)
-            attention_mask = (generated != processor.pad_token_id).long()
-            response_mask = torch.zeros_like(attention_mask)
-            response_mask[:, prompt_len:] = 1
-            response_mask = response_mask * attention_mask
+            # Mask from the prompt mask + first EOS, not `!= pad_token_id`:
+            # with pad == eos that rule dropped the EOS from response_mask.
+            attention_mask, response_mask = hf_generate_masks(
+                generated, prompt_mask, processor.eos_token_id
+            )
 
             all_input_ids = [generated[i].tolist() for i in range(generated.size(0))]
             all_attention_masks = [attention_mask[i].tolist() for i in range(attention_mask.size(0))]
@@ -509,14 +511,3 @@ def kl_penalty(student_logp: torch.Tensor, teacher_logp: torch.Tensor, mode: str
         return torch.clamp(kld, min=-10, max=10)
     raise ValueError(f"Unsupported loss_mode: {mode!r}")
 
-
-def _remove_left_padding_batch(prompt_ids: torch.Tensor, pad_id: int) -> list[list[int]]:
-    result = []
-    for i in range(prompt_ids.size(0)):
-        ids = prompt_ids[i]
-        non_pad = (ids != pad_id).nonzero(as_tuple=False)
-        if len(non_pad) > 0:
-            result.append(ids[non_pad[0].item():].tolist())
-        else:
-            result.append(ids.tolist())
-    return result

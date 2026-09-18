@@ -32,7 +32,6 @@ def export_workgroup(preset_pkg_dir: str) -> str:
         "_sync_full_weights",
         "asdict_peft",
         "kl_penalty",
-        "_remove_left_padding_batch",
     ]
     helpers = "\n\n".join(extract_function(wg_src, name) for name in helper_names)
 

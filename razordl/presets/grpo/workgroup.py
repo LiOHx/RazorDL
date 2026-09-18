@@ -12,6 +12,7 @@ from razordl.ops.loss.distributed import global_token_denominator
 from razordl.ops.hardware.precision import resolve_precision, resolve_vllm_dtype_name
 from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
 from razordl.ops.model.per_token_logp import compute_per_token_log_probs
+from razordl.ops.model.rollout_utils import hf_generate_masks, remove_left_padding_batch
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +238,7 @@ class GRPOWorkGroup(_WorkGroup):
         vllm_seed = self.config.trainer_config.seed + step
 
         # Remove left padding for vLLM
-        prompt_token_ids = _remove_left_padding_batch(prompt_ids, processor.pad_token_id)
+        prompt_token_ids = remove_left_padding_batch(prompt_ids, processor.pad_token_id)
 
         vllm = self.policy_model_group._vllm_engine
         use_vllm = vllm is not None
@@ -287,11 +288,11 @@ class GRPOWorkGroup(_WorkGroup):
                 )
 
             prompt_len = prompt_ids_repeated.size(1)
-            total_len = generated.size(1)
-            attention_mask = (generated != processor.pad_token_id).long()
-            response_mask = torch.zeros_like(attention_mask)
-            response_mask[:, prompt_len:] = 1
-            response_mask = response_mask * attention_mask
+            # Mask from the prompt mask + first EOS, not `!= pad_token_id`:
+            # with pad == eos that rule dropped the EOS from response_mask.
+            attention_mask, response_mask = hf_generate_masks(
+                generated, prompt_mask_repeated, processor.eos_token_id
+            )
 
             responses = processor.batch_decode(generated[:, prompt_len:], skip_special_tokens=True)
 
@@ -525,17 +526,6 @@ class GRPOWorkGroup(_WorkGroup):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _remove_left_padding_batch(prompt_ids: torch.Tensor, pad_id: int) -> list[list[int]]:
-    result = []
-    for i in range(prompt_ids.size(0)):
-        ids = prompt_ids[i]
-        non_pad = (ids != pad_id).nonzero(as_tuple=False)
-        if len(non_pad) > 0:
-            result.append(ids[non_pad[0].item():].tolist())
-        else:
-            result.append(ids.tolist())
-    return result
 
 
 def _extract_rewards(responses: list[str], answers: list[str]) -> list[float]:
