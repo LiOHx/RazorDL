@@ -208,3 +208,26 @@ def test_ulysses_sp_chunked_fallback_with_left_padding(monkeypatch):
     model = _tiny_qwen3()
     batch = _left_padded_batch(model.config.vocab_size)
     _assert_sp_matches_reference(monkeypatch, model, batch)
+
+
+def _tiny_qwen3_5(full_attention_interval=4, num_hidden_layers=4):
+    from transformers import Qwen3_5ForCausalLM, Qwen3_5TextConfig
+
+    torch.manual_seed(0)
+    cfg = Qwen3_5TextConfig(
+        hidden_size=64, intermediate_size=128, num_hidden_layers=num_hidden_layers,
+        num_attention_heads=4, num_key_value_heads=2, head_dim=16, vocab_size=128,
+        linear_num_value_heads=4, linear_num_key_heads=2, linear_key_head_dim=16,
+        linear_value_head_dim=16, linear_conv_kernel_dim=4,
+        full_attention_interval=full_attention_interval,
+        tie_word_embeddings=False, attn_implementation="eager",
+    )
+    return Qwen3_5ForCausalLM(cfg).float().eval()
+
+
+def test_ulysses_sp_gated_attention_matches_unsplit_forward(monkeypatch):
+    """Qwen3.5 attention: the output gate is split per head, not in flat halves."""
+    model = _tiny_qwen3_5(full_attention_interval=1, num_hidden_layers=2)
+    assert set(model.config.layer_types) == {"full_attention"}
+    batch = _left_padded_batch(model.config.vocab_size)
+    _assert_sp_matches_reference(monkeypatch, model, batch)

@@ -439,13 +439,17 @@ def _patch(attn, sp_group):
 
         # --- QKV projection → (B, S_local, H, D) ----------------------------
         q_proj_out = attn.q_proj(hidden_states)
-        # Detect gate mechanism (e.g. Qwen3.5): q_proj outputs 2x normal dim,
-        # where the second half is an output gate applied before o_proj.
+        # Gated attention (Qwen3.5 / Qwen3-Next): q_proj outputs 2x the
+        # normal dim, laid out *per head* as [q_h | gate_h] -- transformers
+        # does view(..., head_dim * 2).chunk(2, dim=-1).  Taking the flat
+        # first/second halves instead silently mixed heads into the gate.
         o_proj_in = attn.o_proj.in_features  # normal dim = num_heads * head_dim
         _gate = None
         if q_proj_out.shape[-1] > o_proj_in:
-            q = q_proj_out[..., :o_proj_in].view(hidden_shape)
-            _gate = q_proj_out[..., o_proj_in:]
+            q, _gate = torch.chunk(
+                q_proj_out.view(*input_shape, -1, attn.head_dim * 2), 2, dim=-1
+            )
+            q = q.reshape(hidden_shape)
         else:
             q = q_proj_out.view(hidden_shape)
         k = attn.k_proj(hidden_states).view(hidden_shape)
