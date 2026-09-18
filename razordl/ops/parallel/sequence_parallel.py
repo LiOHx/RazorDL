@@ -39,15 +39,16 @@ _SUPPORTED_MODEL_TYPES = frozenset({
 # Global SP state
 # ---------------------------------------------------------------------------
 _sp_group: Optional[ProcessGroup] = None
-_sp_rank: int = 0
-_sp_world_size: int = 1
+# Full-length 2D padding mask of the batch currently being trained (set by
+# split_for_sp, None when the batch has no padding).  Attention inside the
+# patched layers sees the *gathered* sequence, so it needs the whole mask,
+# not the local chunk the model was called with.
+_sp_full_attention_mask: Optional[torch.Tensor] = None
 
 
 def init_sp_group(sp_group: ProcessGroup):
-    global _sp_group, _sp_rank, _sp_world_size
+    global _sp_group
     _sp_group = sp_group
-    _sp_rank = dist.get_rank(sp_group)
-    _sp_world_size = dist.get_world_size(sp_group)
 
 
 def get_sp_group() -> Optional[ProcessGroup]:
@@ -55,11 +56,21 @@ def get_sp_group() -> Optional[ProcessGroup]:
 
 
 def get_sp_rank() -> int:
-    return _sp_rank
+    return dist.get_rank(_sp_group) if _sp_group is not None else 0
 
 
 def get_sp_world_size() -> int:
-    return _sp_world_size
+    return dist.get_world_size(_sp_group) if _sp_group is not None else 1
+
+
+def _set_sp_full_attention_mask(mask: Optional[torch.Tensor]):
+    global _sp_full_attention_mask
+    _sp_full_attention_mask = mask
+
+
+def get_sp_full_attention_mask() -> Optional[torch.Tensor]:
+    """Full-sequence ``[B, S]`` bool padding mask, or None when unpadded."""
+    return _sp_full_attention_mask
 
 
 def get_sp_data_parallel_info(global_rank: int, world_size: int, sp_size: int):
@@ -179,10 +190,14 @@ def split_for_sp(
     sp_size = get_sp_world_size()
 
     if sp_size <= 1:
+        _set_sp_full_attention_mask(None)
         result = {"input_ids": input_ids, "attention_mask": attention_mask}
         if labels is not None:
             result["labels"] = labels
         return result
+
+    key_valid = attention_mask.bool()
+    _set_sp_full_attention_mask(None if bool(key_valid.all()) else key_valid)
 
     seq_len = input_ids.shape[1]
     assert seq_len % sp_size == 0, (
@@ -466,6 +481,7 @@ def _patch(attn, sp_group):
             q, k, v,
             scaling=attn.scaling,
             num_key_value_groups=num_kv_groups,
+            key_valid=get_sp_full_attention_mask(),
         )
 
         # --- Ulysses all-to-all REVERSE: scatter seq, gather heads -----------
@@ -497,17 +513,27 @@ def _repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # SP attention dispatcher: avoids O(S²) memory for large head_dim
 # ---------------------------------------------------------------------------
-def _sp_attention(q, k, v, scaling, num_key_value_groups=1, chunk_size=2048):
-    """Memory-efficient attention for SP.
+def _sp_attention(q, k, v, scaling, num_key_value_groups=1, chunk_size=2048,
+                  key_valid=None):
+    """Memory-efficient causal attention over the gathered sequence.
 
-    Fallback chain:
+    ``key_valid`` is the full ``[B, S]`` padding mask (None when the batch
+    has no padding).  It was ignored before this argument existed: with the
+    left-padding collator every valid query attended to the pad keys, so SP
+    runs trained on a different function than the non-SP ones.
+
+    Fallback chain without padding:
       1. SDPA Flash / Efficient kernels (fastest, head_dim ≤ 256)
       2. xformers memory_efficient_attention (fast, supports larger head_dim)
       3. Chunked attention with online softmax (always works, O(chunk) memory)
+    With padding: SDPA with an explicit causal & padding bool mask, then 3.
     """
     if num_key_value_groups > 1:
         k = _repeat_kv(k, num_key_value_groups)
         v = _repeat_kv(v, num_key_value_groups)
+
+    if key_valid is not None:
+        return _padded_causal_attention(q, k, v, scaling, key_valid, chunk_size)
 
     # --- Strategy 1: SDPA efficient kernels (exclude math to avoid S×S) ---
     try:
@@ -544,10 +570,34 @@ def _sp_attention(q, k, v, scaling, num_key_value_groups=1, chunk_size=2048):
     return _chunked_causal_attention(q, k, v, scaling, chunk_size)
 
 
-def _chunked_causal_attention(q, k, v, scaling, chunk_size=2048):
+def _padded_causal_attention(q, k, v, scaling, key_valid, chunk_size):
+    """Causal attention that also masks padded keys.
+
+    Rows whose every key is masked (pad queries under left padding) get
+    their diagonal re-enabled so they attend to themselves: a fully masked
+    softmax row is NaN, and ``0 * NaN`` in the next layer's padding multiply
+    would poison the valid positions.  Those rows carry no loss anyway.
+    """
+    S = q.shape[2]
+    causal = torch.ones(S, S, dtype=torch.bool, device=q.device).tril()
+    mask = causal[None, None] & key_valid.to(q.device)[:, None, None, :]
+    dead_rows = ~mask.any(dim=-1, keepdim=True)
+    mask = mask | (dead_rows & torch.eye(S, dtype=torch.bool, device=q.device)[None, None])
+    try:
+        out = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=mask, scale=scaling,
+        )
+        return out.transpose(1, 2).contiguous(), None
+    except RuntimeError:
+        return _chunked_causal_attention(q, k, v, scaling, chunk_size, key_valid=key_valid)
+
+
+def _chunked_causal_attention(q, k, v, scaling, chunk_size=2048, key_valid=None):
     """Causal attention via chunked online softmax.
 
     Memory per step: O(H × chunk_size × max(chunk_size, D)) instead of O(S²).
+    ``key_valid`` (``[B, S]`` bool, optional) additionally masks padded keys;
+    a row with no valid key returns zeros (never NaN).
     """
     B, H, S, D = q.shape
     device, dtype = q.device, q.dtype
@@ -574,6 +624,9 @@ def _chunked_causal_attention(q, k, v, scaling, chunk_size=2048):
                 q_idx = torch.arange(q_start, q_end, device=device).unsqueeze(1)
                 kv_idx = torch.arange(kv_start, kv_end, device=device).unsqueeze(0)
                 scores = scores.masked_fill(kv_idx > q_idx, float("-inf"))
+            if key_valid is not None:
+                pad_keys = ~key_valid[:, None, None, kv_start:kv_end].to(device)
+                scores = scores.masked_fill(pad_keys, float("-inf"))
 
             chunk_max = scores.amax(dim=-1, keepdim=True)
             chunk_max = torch.clamp(chunk_max, min=-1e30)
