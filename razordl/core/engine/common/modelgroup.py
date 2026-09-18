@@ -355,5 +355,9 @@ class ParallelModelGroup(BaseModelGroup):
     def inference_model(self):
         return self.parallel_backend.unwrap_for_inference(self.model)
 
+    def generation_context(self):
+        """Required around ``inference_model.generate(...)`` (FSDP2 + LoRA needs the root unsharded)."""
+        return self.parallel_backend.generation_context(self.model)
+
     def iter_vllm_weights(self, *, lora_only: bool):
         return self.parallel_backend.iter_vllm_weights(self.model, lora_only=lora_only)

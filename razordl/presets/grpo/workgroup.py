@@ -292,7 +292,7 @@ class GRPOWorkGroup(_WorkGroup):
             prompt_mask_repeated = prompt_mask.repeat_interleave(self.group_size, dim=0)
             max_new = getattr(self.config.data_config, "max_completion_length", 64)
 
-            with torch.no_grad():
+            with torch.no_grad(), self.policy_model_group.generation_context():
                 generated = self.policy_model_group.inference_model.generate(
                     input_ids=prompt_ids_repeated,
                     attention_mask=prompt_mask_repeated,

@@ -47,6 +47,10 @@ Copy `presets/_template/` and edit files marked `[改]`. The CLI auto-discovers 
 
 The CLI auto-discovers presets via the rules in `@razordl/cli/CLAUDE.md`. As long as your preset follows the directory contract + naming rules above, no CLI changes are needed. From a preset author's perspective the contract is: expose `{CamelCase}Config` / `WorkGroup` / `Dataset` / `Collator` aliases in `__init__.py`, and the CLI will find them.
 
+## HF generate on the policy
+
+Call `inference_model.generate(...)` only inside `with model_group.generation_context():` — under FSDP2 + LoRA the PEFT root forwards `generate` to the inner HF model, skipping the root's all-gather, and the first embedding lookup fails with "got mixed torch.Tensor and DTensor".
+
 ## Model profile enforcement
 
 Every preset's `build_model()` MUST go through `razordl.ops.model.huggingface.enforce_model_profile(model_path)`. LM-style presets get this automatically through `build_causal_lm`; multimodal presets call it explicitly. See `@razordl/ops/model/profiles/CLAUDE.md` for adding support for a new model family.

@@ -328,7 +328,7 @@ class OPDWorkGroup(_WorkGroup):
                 all_response_masks.append(rm)
         else:
             max_new = getattr(self.config.data_config, "max_completion_length", 256)
-            with torch.no_grad():
+            with torch.no_grad(), self.policy_model_group.generation_context():
                 generated = self.policy_model_group.inference_model.generate(
                     input_ids=prompt_ids,
                     attention_mask=prompt_mask,

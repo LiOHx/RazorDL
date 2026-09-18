@@ -106,3 +106,49 @@ def test_ddp_backend_unwraps_model_for_inference_methods():
 
     assert not hasattr(wrapped, "generate")
     assert backend.unwrap_for_inference(wrapped).generate() == "ok"
+
+
+class _FakeFsdpRoot:
+    """Stands in for a fully_shard-ed PeftModel (FSDP2 root with a PEFT accessor)."""
+
+    def __init__(self):
+        self.calls = []
+
+    def get_base_model(self):
+        return self
+
+    def _get_fsdp_state(self):
+        root = self
+
+        class _State:
+            def _lazy_init(self):
+                root.calls.append("lazy_init")
+
+        return _State()
+
+    def unshard(self, async_op=False):
+        self.calls.append("unshard")
+
+    def reshard(self):
+        self.calls.append("reshard")
+
+
+def test_fsdp2_generation_context_unshards_peft_root():
+    backend = FSDP2Backend.__new__(FSDP2Backend)
+    peft_root = _FakeFsdpRoot()
+    with backend.generation_context(peft_root):
+        assert peft_root.calls == ["lazy_init", "unshard"]
+    assert peft_root.calls == ["lazy_init", "unshard", "reshard"]
+
+    plain = _FakeFsdpRoot()
+    plain.get_base_model = None  # a plain HF root runs its own forward: nothing to do
+    with backend.generation_context(plain):
+        pass
+    assert plain.calls == []
+
+    class _DdpUnwrapped:  # PeftModel without FSDP2 methods
+        def get_base_model(self):
+            return self
+
+    with backend.generation_context(_DdpUnwrapped()):
+        pass

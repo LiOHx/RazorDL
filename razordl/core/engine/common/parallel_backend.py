@@ -73,6 +73,11 @@ class ParallelBackend(ABC):
     def unwrap_for_inference(self, model):
         return model
 
+    @contextlib.contextmanager
+    def generation_context(self, model) -> Iterator[None]:
+        """Wrap ``unwrap_for_inference(model).generate(...)`` calls; no-op by default."""
+        yield
+
     def iter_vllm_weights(self, model, *, lora_only: bool):
         from razordl.core.engine.common.parallel_state import iter_model_weights_for_sync
 
@@ -246,6 +251,35 @@ class FSDP2Backend(ParallelBackend):
         finally:
             if mc._is_offload_param:
                 offload_fsdp2_model_to_cpu(model)
+
+    @contextlib.contextmanager
+    def generation_context(self, model):
+        """Keep the FSDP2 root's params gathered while HF ``generate`` runs.
+
+        ``PeftModel.generate`` forwards to the inner HF model, so the root
+        module's pre-forward hook -- the one that all-gathers the root
+        param group (embed_tokens, lm_head, final norm) -- never fires and
+        the first embedding lookup dies with "got mixed torch.Tensor and
+        DTensor". The wrapped decoder layers still unshard in their own
+        hooks. A plain HF root runs its own forward and needs nothing.
+        """
+        peft_root = callable(getattr(model, "get_base_model", None)) and callable(getattr(model, "unshard", None))
+        if peft_root:
+            # FSDP2 marks whichever state runs its pre-forward first as the
+            # root. When the very first forward of the process is a rollout,
+            # that would be decoder layer 0 (the root's own forward is
+            # bypassed), and the real root's later training forward fails
+            # with "FSDP state has already been lazily initialized for
+            # ...layers.0". Initialise the root state first; a no-op after
+            # the first training step.
+            state = model._get_fsdp_state()
+            state._lazy_init()
+            model.unshard()
+        try:
+            yield
+        finally:
+            if peft_root:
+                model.reshard()
 
 
 class DDPBackend(ParallelBackend):
