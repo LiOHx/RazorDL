@@ -1,30 +1,6 @@
-from razordl.ops.model.peft import get_adapter_state_dict, set_adapter_state_dict
-from razordl.ops.parallel.fsdp2 import (
-    create_device_mesh,
-    model_to_fsdp2,
-    model_to_fsdp2_with_lora,
-)
-from razordl.ops.parallel.activation import enable_activation_offloading
-from razordl.ops.parallel.sequence_parallel import (
-    create_sp_process_groups,
-    apply_ulysses_sp,
-    split_for_sp,
-    get_sp_data_parallel_info,
-    get_sp_rank,
-    get_sp_world_size,
-)
+"""razordl-independent utilities (distributed, parallel, model, loss, hardware, ...).
 
-__all__ = [
-    "get_adapter_state_dict",
-    "set_adapter_state_dict",
-    "create_device_mesh",
-    "model_to_fsdp2",
-    "model_to_fsdp2_with_lora",
-    "enable_activation_offloading",
-    "create_sp_process_groups",
-    "apply_ulysses_sp",
-    "split_for_sp",
-    "get_sp_data_parallel_info",
-    "get_sp_rank",
-    "get_sp_world_size",
-]
+Intentionally empty: import from the submodules. Re-exporting peft / FSDP2
+/ sequence-parallel helpers here made ``import razordl.ops.anything`` (and
+thus ``razordl --help``) import torch and peft.
+"""
