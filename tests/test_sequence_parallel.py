@@ -231,3 +231,22 @@ def test_ulysses_sp_gated_attention_matches_unsplit_forward(monkeypatch):
     assert set(model.config.layer_types) == {"full_attention"}
     batch = _left_padded_batch(model.config.vocab_size)
     _assert_sp_matches_reference(monkeypatch, model, batch)
+
+
+@pytest.mark.parametrize("pad", [0, 5])
+def test_ulysses_sp_gated_delta_net_matches_unsplit_forward(monkeypatch, pad):
+    """Qwen3.5: the GatedDeltaNet layers are gathered, the attention one split."""
+    model = _tiny_qwen3_5()
+    assert model.config.layer_types.count("linear_attention") == 3
+    batch = _left_padded_batch(model.config.vocab_size, pad=pad)
+    _assert_sp_matches_reference(monkeypatch, model, batch)
+
+
+def test_ulysses_sp_refuses_unpatched_linear_attention(monkeypatch):
+    model = _tiny_qwen3_5()
+    fake = _FakeDist(2)
+    fake.set_rank(0)
+    monkeypatch.setattr(sp, "dist", fake)
+    monkeypatch.setattr(sp, "_is_linear_attention", lambda m: False)
+    with pytest.raises(RuntimeError, match="linear_attention"):
+        sp.apply_ulysses_sp(model, sp_group=object())

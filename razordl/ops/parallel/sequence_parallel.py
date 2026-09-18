@@ -9,6 +9,13 @@ restores the original layout.
 
 Requires: num_q_heads % sp_size == 0 AND num_kv_heads % sp_size == 0.
 
+GatedDeltaNet (linear-attention) layers of Qwen3.5 have no heads to
+scatter: the recurrence is sequential along the sequence, so each rank
+all-gathers the layer input, runs the original forward on the full
+sequence and keeps its own slice (``_patch_linear_attention``).  The
+compute of those layers is therefore replicated ``sp_size`` times (it is
+linear in S) and their activations are held at full length on every rank.
+
 Currently supported: Qwen2, Qwen3, Qwen3.5 (including Qwen3.5-MoE).
 To extend support to other model families, add their model_type to
 _SUPPORTED_MODEL_TYPES and verify correctness.
@@ -129,6 +136,41 @@ class _AllToAll(torch.autograd.Function):
 
 def all_to_all(tensor, scatter_dim, gather_dim, group):
     return _AllToAll.apply(tensor.contiguous(), scatter_dim, gather_dim, group)
+
+
+class _SeqAllGather(torch.autograd.Function):
+    """All-gather along the sequence dim (1); backward is a reduce-scatter.
+
+    Every rank's output depends on every rank's input, so the gradient of a
+    rank's local chunk is the *sum* over ranks of the gradient that reached
+    that chunk of the gathered tensor -- exactly what reduce_scatter(SUM)
+    computes.
+    """
+
+    @staticmethod
+    def forward(ctx, inp, group):
+        ctx.group = group
+        ws = dist.get_world_size(group)
+        if ws == 1:
+            return inp
+        inp = inp.contiguous()
+        chunks = [torch.empty_like(inp) for _ in range(ws)]
+        dist.all_gather(chunks, inp, group=group)
+        return torch.cat(chunks, dim=1)
+
+    @staticmethod
+    def backward(ctx, grad):
+        ws = dist.get_world_size(ctx.group)
+        if ws == 1:
+            return grad, None
+        chunks = [c.contiguous() for c in grad.chunk(ws, dim=1)]
+        out = torch.empty_like(chunks[0])
+        dist.reduce_scatter(out, chunks, group=ctx.group)
+        return out, None
+
+
+def seq_all_gather(tensor, group):
+    return _SeqAllGather.apply(tensor, group)
 
 
 # ---------------------------------------------------------------------------
@@ -408,18 +450,71 @@ def apply_ulysses_sp(model, sp_group: ProcessGroup):
     _validate_sp_compatibility(model, sp_size)
 
     count = 0
+    linear_count = 0
     for _name, module in model.named_modules():
         if _is_attention(module):
             _patch(module, sp_group)
             count += 1
+        elif _is_linear_attention(module):
+            _patch_linear_attention(module, sp_group)
+            linear_count += 1
+
+    # Every linear-attention layer the config declares must have been
+    # patched: an unpatched one would run its recurrence on the local chunk
+    # only and silently lose the context of the previous ranks.
+    text_config = _text_config(model)
+    declared = sum(
+        1 for t in (getattr(text_config, "layer_types", None) or []) if t == "linear_attention"
+    )
+    if declared != linear_count:
+        raise RuntimeError(
+            f"[SP] config.layer_types declares {declared} linear_attention layers "
+            f"but {linear_count} GatedDeltaNet modules were found to patch. "
+            f"Sequence parallel would leave the others running on local chunks."
+        )
 
     if int(os.environ.get("LOCAL_RANK", "0")) == 0:
-        logger.info(f"[SP] Ulysses patched {count} attention layers (sp_size={sp_size})")
+        logger.info(
+            f"[SP] Ulysses patched {count} attention layers and {linear_count} "
+            f"linear-attention (gathered) layers (sp_size={sp_size})"
+        )
+
+
+def _text_config(model):
+    config = getattr(model, "config", None)
+    text_config = getattr(config, "text_config", None)
+    return config if text_config is None else text_config
 
 
 def _is_attention(m):
     """Detect attention modules by checking for standard projection layers."""
     return all(hasattr(m, a) for a in ("q_proj", "k_proj", "o_proj", "head_dim"))
+
+
+def _is_linear_attention(m):
+    """Detect GatedDeltaNet-style modules (Qwen3.5 / Qwen3-Next)."""
+    return all(hasattr(m, a) for a in ("in_proj_qkv", "conv1d", "out_proj"))
+
+
+def _patch_linear_attention(module, sp_group):
+    """Gather the sequence, run the original recurrence, keep the local slice.
+
+    The full-length padding mask comes from ``get_sp_full_attention_mask``;
+    the ``attention_mask`` the decoder layer passes is the local chunk's and
+    is ignored.  ``cache_params`` is always None: training never caches.
+    """
+    original_forward = module.forward
+
+    def _gathered_forward(hidden_states, cache_params=None, attention_mask=None, **kwargs):
+        local_len = hidden_states.shape[1]
+        full = seq_all_gather(hidden_states, sp_group)
+        out = original_forward(
+            full, cache_params=None, attention_mask=get_sp_full_attention_mask(), **kwargs
+        )
+        lo = get_sp_rank() * local_len
+        return out[:, lo:lo + local_len]
+
+    module.forward = _gathered_forward
 
 
 def _patch(attn, sp_group):
