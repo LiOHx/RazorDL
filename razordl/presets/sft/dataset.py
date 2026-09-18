@@ -1,4 +1,5 @@
 import hashlib
+import inspect
 import json
 import math
 import os
@@ -163,9 +164,14 @@ class SFTDataset(Dataset):
         }
 
     def _cache_hash(self) -> str:
-        """Compute a hash from model path + max_length + data file mtimes.
+        """Hash of everything that changes the tokenized output.
 
-        Returns None if no data files are found (skip caching).
+        model path, max_length, the data files' mtimes, the tokenizer's chat
+        template and the source of ``format_item``.  The last two were once
+        left out: a custom-mode project that edited ``format_item`` (or a
+        model whose template changed) kept hitting the stale cache and the
+        edit never took effect.  Returns None if no data files are found
+        (skip caching).
         """
         data_dir = self.data_config.train_data_path
         if not data_dir or not os.path.isdir(data_dir):
@@ -183,11 +189,21 @@ class SFTDataset(Dataset):
         model_path = self.config.worker_group_config.model_group_config.model_config.model_path
         hasher.update(model_path.encode())
         hasher.update(str(self.max_length).encode())
+        hasher.update(str(getattr(self.tokenizer, "chat_template", None) or "").encode())
+        hasher.update(self._format_item_signature().encode())
         for fname in data_files:
             fpath = os.path.join(data_dir, fname)
             hasher.update(fname.encode())
             hasher.update(str(os.path.getmtime(fpath)).encode())
         return hasher.hexdigest()[:12]
+
+    def _format_item_signature(self) -> str:
+        """Source text of the effective ``format_item`` (qualified name if unavailable)."""
+        fn = type(self).format_item
+        try:
+            return inspect.getsource(fn)
+        except (OSError, TypeError):
+            return f"{fn.__module__}.{fn.__qualname__}"
 
     def _cache_path(self) -> str | None:
         """Return the cache file path, or None if caching is not applicable."""
