@@ -5,6 +5,7 @@ from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 from razordl.core.base import logging
 from razordl.core.engine.on_policy_single_model.config import Config
+from razordl.ops.model.rollout_utils import truncate_chat_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -81,27 +82,19 @@ class GRPODataset(Dataset):
         """Tokenize the prompt with system prompt, keep the answer as reward target."""
         messages = item.get("messages", [])
 
-        # New format: answer is a separate field
+        # The policy generates the assistant turn; a trailing one in the data
+        # must never end up in the prompt (it leaked the answer when `answer`
+        # was also given). Old format: it *is* the answer.
         answer = item.get("answer", "")
-        if not answer and messages and messages[-1]["role"] == "assistant":
-            # Backward compat: old format had answer in last assistant message
-            answer = messages[-1]["content"]
+        if messages and messages[-1]["role"] == "assistant":
+            if not answer:
+                answer = messages[-1]["content"]
             messages = messages[:-1]
 
         # Prepend system prompt to guide output format
         messages = [{"role": "system", "content": GRPO_SYSTEM_PROMPT}] + messages
 
-        prompt_text = self.processor.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        prompt_ids = self.processor.encode(
-            prompt_text,
-            add_special_tokens=False,
-            truncation=True,
-            max_length=self.max_length,
-        )
+        prompt_ids = truncate_chat_prompt(self.processor, messages, self.max_length)
 
         return {
             "prompt_ids": prompt_ids,

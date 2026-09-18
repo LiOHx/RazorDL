@@ -6,6 +6,7 @@ from transformers import AutoTokenizer
 
 from razordl.core.base import logging
 from razordl.core.engine.on_policy_single_model.config import Config
+from razordl.ops.model.rollout_utils import truncate_chat_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -86,18 +87,7 @@ class OPDDataset(Dataset):
         if not messages or messages[0]["role"] != "system":
             messages = [{"role": "system", "content": OPD_SYSTEM_PROMPT}] + messages
 
-        prompt_text = self.processor.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-            enable_thinking=False,
-        )
-        prompt_ids = self.processor.encode(
-            prompt_text,
-            add_special_tokens=False,
-            truncation=True,
-            max_length=self.max_length,
-        )
+        prompt_ids = truncate_chat_prompt(self.processor, messages, self.max_length, enable_thinking=False)
         return {"prompt_ids": prompt_ids}
 
     def __len__(self):

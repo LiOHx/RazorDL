@@ -62,3 +62,57 @@ def hf_generate_masks(
     attention_mask = torch.cat([prompt_mask, response_mask_gen], dim=1)
     response_mask = torch.cat([torch.zeros_like(prompt_mask), response_mask_gen], dim=1)
     return attention_mask, response_mask
+
+
+def truncate_chat_prompt(
+    tokenizer,
+    messages: list[dict],
+    max_length: int,
+    add_generation_prompt: bool = True,
+    **template_kwargs,
+) -> list[int]:
+    """Render ``messages`` through the chat template into at most ``max_length`` ids.
+
+    ``tokenizer.encode(..., truncation=True)`` cuts the *end* of the rendered
+    prompt, which for a generation prompt is ``<|im_start|>assistant\\n``: the
+    policy then continued the user's text instead of answering it, and the
+    reward was garbage for exactly the long prompts.  When the rendering is
+    too long, this shortens the content of the longest user message (its
+    first tokens are kept, decoded back to text) and re-renders, so the
+    system prompt, the turn markers and the generation prompt all survive.
+    Raises ``ValueError`` when even an empty user message does not fit.
+    """
+
+    def _render(msgs):
+        text = tokenizer.apply_chat_template(
+            msgs, tokenize=False, add_generation_prompt=add_generation_prompt, **template_kwargs
+        )
+        return tokenizer.encode(text, add_special_tokens=False)
+
+    ids = _render(messages)
+    if len(ids) <= max_length:
+        return ids
+
+    user_idx = [i for i, m in enumerate(messages) if m.get("role") == "user"]
+    if not user_idx:
+        raise ValueError(f"prompt is {len(ids)} tokens > max_length={max_length} and has no user message to shorten")
+    longest = max(user_idx, key=lambda i: len(tokenizer.encode(str(messages[i]["content"]), add_special_tokens=False)))
+    content_ids = tokenizer.encode(str(messages[longest]["content"]), add_special_tokens=False)
+    overhead = len(ids) - len(content_ids)
+    budget = max_length - overhead
+    if budget <= 0:
+        raise ValueError(
+            f"chat template overhead is {overhead} tokens, leaving no room for user text under max_length={max_length}"
+        )
+
+    # decode/re-encode can shift the count by a token or two at the cut; shrink until it fits
+    for _ in range(8):
+        shortened = [dict(m) for m in messages]
+        shortened[longest]["content"] = tokenizer.decode(content_ids[:budget], skip_special_tokens=True)
+        ids = _render(shortened)
+        if len(ids) <= max_length:
+            return ids
+        budget -= len(ids) - max_length
+        if budget <= 0:
+            break
+    raise ValueError(f"could not fit the prompt into max_length={max_length}")
