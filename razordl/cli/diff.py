@@ -3,7 +3,7 @@
 import os
 import sys
 
-from razordl.ops.snapshot import diff_experiments, get_latest_experiment
+from razordl.ops.snapshot import diff_experiments, get_latest_experiment, resolve_outputs_dir
 
 
 def handle_diff(args):
@@ -12,10 +12,10 @@ def handle_diff(args):
 
     if left_arg is None and right_arg is None:
         # Current project vs latest experiment
-        outputs_dir = os.path.join(os.getcwd(), "outputs")
+        outputs_dir = resolve_outputs_dir(os.getcwd())
         latest = get_latest_experiment(outputs_dir)
         if latest is None:
-            print("No experiments found under outputs/")
+            print(f"No experiments found under {outputs_dir}")
             sys.exit(1)
         left_dir = os.path.abspath(os.getcwd())
         right_dir = latest

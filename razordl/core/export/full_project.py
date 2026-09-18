@@ -260,7 +260,7 @@ from config import {config_class}
 from dataset import Dataset, Collator
 from workgroup import WorkGroup
 from engine.main import main
-from ops.snapshot import diff_experiments, get_latest_experiment, scan_experiments
+from ops.snapshot import diff_experiments, get_latest_experiment, resolve_outputs_dir, scan_experiments
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "diff":
@@ -268,10 +268,10 @@ if __name__ == "__main__":
         right_arg = sys.argv[3] if len(sys.argv) > 3 else None
 
         if left_arg is None and right_arg is None:
-            outputs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "outputs")
+            outputs_dir = resolve_outputs_dir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             latest = get_latest_experiment(outputs_dir)
             if latest is None:
-                print("No experiments found under outputs/")
+                print(f"No experiments found under {{outputs_dir}}")
                 sys.exit(1)
             left_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             right_dir = latest

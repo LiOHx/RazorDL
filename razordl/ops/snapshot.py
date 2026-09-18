@@ -210,6 +210,43 @@ def snapshot_code(exp_dir: str, project_dir: str, exclude_paths=()):
     return provenance
 
 
+def resolve_outputs_dir(project_dir: str) -> str:
+    """The experiments parent dir a project's config.yaml points at.
+
+    ``outputs_dir`` (or the legacy ``output_dir``), relative to the project;
+    ``./outputs`` when absent.  ``razordl diff`` used to hardcode
+    ``outputs/`` and reported "no experiments" for any custom outputs_dir.
+    """
+    cfg = {}
+    config_path = os.path.join(project_dir, "config.yaml")
+    if os.path.exists(config_path):
+        import yaml
+
+        try:
+            with open(config_path) as f:
+                cfg = yaml.safe_load(f) or {}
+        except Exception:
+            cfg = {}
+    outputs_dir = cfg.get("outputs_dir") or cfg.get("output_dir") or "./outputs"
+    return os.path.abspath(os.path.join(project_dir, os.path.expanduser(str(outputs_dir))))
+
+
+def _normalize_config_for_diff(data: dict) -> dict:
+    """Make a user config and its snapshot compare equal.
+
+    snapshot_code backfills ``outputs_dir`` from a legacy ``output_dir``
+    before pinning ``output_dir`` to the experiment; apply the same
+    backfill here, then drop INTERNAL_CONFIG_KEYS, so a legacy project no
+    longer diffs against its own snapshot.
+    """
+    data = dict(data)
+    if "outputs_dir" not in data and "output_dir" in data:
+        data["outputs_dir"] = data["output_dir"]
+    for k in INTERNAL_CONFIG_KEYS:
+        data.pop(k, None)
+    return data
+
+
 def scan_experiments(outputs_dir: str) -> list[str]:
     """List all experiment directories, sorted oldest-first."""
     if not os.path.isdir(outputs_dir):
@@ -268,18 +305,21 @@ def _resolve_diff_root(base_path: str) -> str:
     return base_path
 
 
-def build_file_tree(root_dir: str) -> dict:
+def build_file_tree(root_dir: str, exclude_paths=()) -> dict:
     """Build a ``{relative_path: sha256_hex}`` dict for files under *root_dir*.
 
     For YAML files, internal framework keys (``INTERNAL_CONFIG_KEYS``) are
     stripped before hashing so that snapshot-injected values like
-    ``output_dir`` do not cause false differences.
+    ``output_dir`` do not cause false differences.  ``exclude_paths`` are
+    absolute directories to skip (the project's configured outputs dir,
+    which the name-based EXCLUDE_DIRS cannot know).
     """
     tree = {}
     if not os.path.isdir(root_dir):
         return tree
+    exclude_paths = frozenset(os.path.abspath(p) for p in exclude_paths)
     for dirpath, dirs, files in os.walk(root_dir):
-        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS and not d.startswith(".")]
+        dirs[:] = [d for d in _prune_dirs(dirpath, dirs, exclude_paths) if not d.startswith(".")]
         for fname in sorted(files):
             if fname.startswith("."):
                 continue
@@ -296,9 +336,7 @@ def build_file_tree(root_dir: str) -> dict:
                     with open(fpath, "rb") as f:
                         raw = f.read()
                     try:
-                        data = _yaml.safe_load(raw) or {}
-                        for k in INTERNAL_CONFIG_KEYS:
-                            data.pop(k, None)
+                        data = _normalize_config_for_diff(_yaml.safe_load(raw) or {})
                         normalized = _yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=True)
                         h.update(normalized.encode("utf-8"))
                     except Exception:
@@ -319,18 +357,16 @@ def diff_yaml_values(left_path: str, right_path: str) -> dict:
     diffs = {}
     try:
         with open(left_path) as f:
-            left = yaml.safe_load(f) or {}
+            left = _normalize_config_for_diff(yaml.safe_load(f) or {})
     except Exception:
         left = {}
     try:
         with open(right_path) as f:
-            right = yaml.safe_load(f) or {}
+            right = _normalize_config_for_diff(yaml.safe_load(f) or {})
     except Exception:
         right = {}
     all_keys = set(left.keys()) | set(right.keys())
     for key in sorted(all_keys):
-        if key in INTERNAL_CONFIG_KEYS:
-            continue
         lv = left.get(key)
         rv = right.get(key)
         if lv != rv:
@@ -352,8 +388,9 @@ def diff_experiments(left_dir: str, right_dir: str, left_label: str, right_label
     if not os.path.isdir(right_dir):
         return f"Error: not a directory: {right_dir}"
 
-    left_tree = build_file_tree(left_dir)
-    right_tree = build_file_tree(right_dir)
+    # A project side (not a code/ snapshot) must not walk its own experiments.
+    left_tree = build_file_tree(left_dir, exclude_paths=[resolve_outputs_dir(left_dir)])
+    right_tree = build_file_tree(right_dir, exclude_paths=[resolve_outputs_dir(right_dir)])
     left_files = set(left_tree.keys())
     right_files = set(right_tree.keys())
 

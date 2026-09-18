@@ -205,3 +205,51 @@ def test_snapshot_and_hash_skip_configured_outputs_dir(tmp_path):
     assert h_before == h_after == provenance["code_hash"]
     # Without the exclusion the old experiment's jsonl would have leaked into the hash.
     assert compute_code_hash(str(project)) != h_before
+
+
+# --- razordl diff: configured outputs_dir, legacy config vs its snapshot -----------
+
+
+def test_resolve_outputs_dir_reads_config(tmp_path):
+    from razordl.ops.snapshot import resolve_outputs_dir
+
+    assert resolve_outputs_dir(str(tmp_path)) == str(tmp_path / "outputs")
+    (tmp_path / "config.yaml").write_text("outputs_dir: ./runs\n")
+    assert resolve_outputs_dir(str(tmp_path)) == str(tmp_path / "runs")
+    (tmp_path / "config.yaml").write_text("output_dir: ./legacy\n")  # legacy key
+    assert resolve_outputs_dir(str(tmp_path)) == str(tmp_path / "legacy")
+
+
+def test_diff_uses_configured_outputs_dir(tmp_path, monkeypatch, capsys):
+    from argparse import Namespace
+
+    from razordl.cli.diff import handle_diff
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "config.yaml").write_text("outputs_dir: ./runs\nlr: 1\n")
+    exp = project / "runs" / "2026-01-01_00-00-00"
+    (exp / "code").mkdir(parents=True)
+    (exp / "code" / "config.yaml").write_text("outputs_dir: ./runs\nlr: 2\n")
+    (exp / "step_info.jsonl").write_text('{"step": 1}\n')
+    monkeypatch.chdir(project)
+
+    handle_diff(Namespace(left=None, right=None))
+    out = capsys.readouterr().out
+    assert "2026-01-01_00-00-00" in out and "lr" in out
+
+
+def test_legacy_project_does_not_diff_against_its_own_snapshot(tmp_path):
+    from razordl.ops.snapshot import diff_experiments, snapshot_code
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "config.yaml").write_text("output_dir: ./old_outputs\nlr: 1\n")
+    (project / "main.py").write_text("print('hi')\n")
+    exp = project / "old_outputs" / "2026-01-01_00-00-00"
+    exp.mkdir(parents=True)
+    snapshot_code(str(exp), str(project), exclude_paths=[str(project / "old_outputs")])
+
+    report = diff_experiments(str(project), str(exp), "left", "right")
+    assert "文件: 无变更" in report
+    assert "配置变更" not in report
