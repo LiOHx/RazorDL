@@ -47,6 +47,7 @@ class GRPOPolicyModelGroup(GRPOCausalLMModelGroup):
     def __init__(self, config: Config):
         super().__init__(config)
         self._vllm_engine = None
+        self._vllm_synced_step = None
         self._init_vllm_engine()
 
     # ---- vLLM engine ----------------------------------------------
@@ -135,10 +136,27 @@ class GRPOPolicyModelGroup(GRPOCausalLMModelGroup):
         else:
             _sync_full_weights(self, engine)
 
+    def _vllm_needs_sync(self, step: int) -> bool:
+        """True when the policy weights changed since the last sync.
+
+        The optimizer steps when ``step % accumulate_grad_steps == 0``
+        (``ModelGroup.update_step``), so the weights seen by the rollout at
+        ``step`` are new only right after such a step. Syncing every step
+        copied the full model (or adapter) into vLLM ``accumulate_grad_steps``
+        times per real update. The first rollout of a process always syncs:
+        a resumed run loads its checkpoint after ``_init_vllm_engine`` ran.
+        """
+        if self._vllm_synced_step is None:
+            return True
+        accumulate = self.model_group_config.optimizer_config.accumulate_grad_steps
+        return step > 1 and (step - 1) % accumulate == 0
+
     @contextlib.contextmanager
-    def vllm_rollout_context(self):
-        """Context that syncs policy weights to vLLM before generate."""
-        self._sync_weights_to_vllm()
+    def vllm_rollout_context(self, step: int):
+        """Yield the vLLM engine, syncing weights first when they changed."""
+        if self._vllm_needs_sync(step):
+            self._sync_weights_to_vllm()
+            self._vllm_synced_step = step
         try:
             yield self._vllm_engine
         finally:
@@ -245,7 +263,7 @@ class GRPOWorkGroup(_WorkGroup):
 
         if use_vllm:
             # --- vLLM path -------------------------------------------------
-            with self.policy_model_group.vllm_rollout_context() as vllm_engine:
+            with self.policy_model_group.vllm_rollout_context(step) as vllm_engine:
                 gen_output = vllm_engine.generate(prompt_token_ids, seed=vllm_seed)
             response_token_ids = gen_output["response_token_ids"]
             response_masks_list = gen_output["response_mask"]
