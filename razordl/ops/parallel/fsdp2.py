@@ -67,6 +67,26 @@ def create_device_mesh(world_size, fsdp_size):
     return device_mesh
 
 
+def _mark_fsdp_managed(model) -> None:
+    """Flag the root so ``transformers`` knows the params are sharded.
+
+    ``GenerationMixin.generate`` sets ``synced_gpus`` only when
+    ``is_fsdp_managed_module(self)`` (transformers 5.x looks at exactly
+    this attribute for FSDP2). Without it, a rank whose batch finishes
+    early leaves the generate loop while the others still all-gather its
+    shards, and the HF-generate rollout of GRPO/OPD deadlocks on >1 GPU.
+    A PEFT root forwards ``generate`` to the wrapped HF model, so that
+    module is the ``self`` transformers inspects and gets the flag too.
+    """
+    model._is_fsdp_managed_module = True
+    get_base_model = getattr(model, "get_base_model", None)
+    if callable(get_base_model):
+        try:
+            get_base_model()._is_fsdp_managed_module = True
+        except Exception:  # not a PeftModel after all; the root flag stands
+            pass
+
+
 def apply_fsdp2(model, fsdp_kwargs, config):
     """model: AutoModelForCausalLM"""
     assert CPUOffloadPolicy is not None, "PyTorch version >= 2.4 is required for using fully_shard API (FSDP2)"
@@ -100,6 +120,7 @@ def apply_fsdp2(model, fsdp_kwargs, config):
     #     print(f"wrap module {model.__class__.__name__}")
     with maybe_patch_fsdp_module(model):
         fully_shard(model, **fsdp_kwargs)  # fsdp2 will not reshard_after_forward for root module
+    _mark_fsdp_managed(model)
 
 
 def fsdp2_load_full_state_dict(model: torch.nn.Module, full_state: dict, device_mesh=None, cpu_offload=None):
@@ -231,6 +252,7 @@ def model_to_fsdp2_with_lora(model, device_mesh, mp_policy) -> None:
     # 包装根模块
     with maybe_patch_fsdp_module(model):
         fully_shard(model, **fsdp_kwargs)
+    _mark_fsdp_managed(model)
     
     # 确保 LoRA 参数仍然可训练
     for name, param in model.named_parameters():
