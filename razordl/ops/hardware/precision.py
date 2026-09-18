@@ -147,6 +147,30 @@ def to_vllm_dtype_name(precision: str) -> str:
         ) from None
 
 
+def resolve_vllm_dtype_name(precision: str) -> str:
+    """vLLM dtype for a *resolved* training precision on the GPU actually present.
+
+    Training runs bf16 everywhere CUDA exists, emulated in software on
+    pre-Ampere cards (see :func:`resolve_precision`).  vLLM has no emulated
+    bf16: a ``bfloat16`` engine on sm < 80 refuses to start (or, with its check
+    disabled, runs garbage), which used to take the whole rollout down and drop
+    the preset into the slow HF fallback.  On such a GPU rollout uses
+    ``float16`` instead, the nearest dtype the card executes natively; the
+    policy weights are cast on the way in, so the mismatch only affects rollout
+    numerics, not the master weights.  Everywhere else this is the plain
+    :func:`to_vllm_dtype_name` mapping.
+    """
+    name = to_vllm_dtype_name(precision)
+    if precision == "bf16" and not device.supports_native_bf16():
+        cap = device.describe().get("compute_capability")
+        logger.warning(
+            f"vLLM cannot run bf16 on this GPU ({cap}); rollout engine uses float16 "
+            "while training stays on emulated bf16"
+        )
+        return "float16"
+    return name
+
+
 def to_storage_dtype(precision: str) -> torch.dtype:
     """Map a resolved precision to the dtype the *parameters* live in.
 

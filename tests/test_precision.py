@@ -251,3 +251,27 @@ def test_storage_dtype_is_fp32_for_both_half_precisions():
     assert to_storage_dtype("bf16") is torch.float32
     assert to_torch_dtype("fp16") is torch.float16
     assert to_torch_dtype("bf16") is torch.bfloat16
+
+
+# --- vLLM rollout dtype ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "precision, native_bf16, expected",
+    [
+        ("bf16", True, "bfloat16"),   # Ampere+: rollout matches training
+        ("bf16", False, "float16"),   # Turing: training emulates bf16, vLLM cannot
+        ("fp16", False, "float16"),
+        ("fp32", False, "float32"),
+    ],
+)
+def test_resolve_vllm_dtype_downgrades_emulated_bf16(monkeypatch, precision, native_bf16, expected):
+    monkeypatch.setattr(prec.device, "supports_native_bf16", lambda: native_bf16)
+    monkeypatch.setattr(prec.device, "describe", lambda: {"compute_capability": "sm_75"})
+    assert prec.resolve_vllm_dtype_name(precision) == expected
+
+
+def test_resolve_vllm_dtype_rejects_unresolved(monkeypatch):
+    monkeypatch.setattr(prec.device, "supports_native_bf16", lambda: True)
+    with pytest.raises(ValueError):
+        prec.resolve_vllm_dtype_name("auto")

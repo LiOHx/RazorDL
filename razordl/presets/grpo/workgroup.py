@@ -9,7 +9,7 @@ from razordl.core.engine.on_policy_single_model.config import Config
 from razordl.core.base import logging
 from razordl.core.base.metrics import DistStats
 from razordl.ops.loss.distributed import global_token_denominator
-from razordl.ops.hardware.precision import resolve_precision, to_vllm_dtype_name
+from razordl.ops.hardware.precision import resolve_precision, resolve_vllm_dtype_name
 from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
 from razordl.ops.model.per_token_logp import compute_per_token_log_probs
 
@@ -79,7 +79,7 @@ class GRPOPolicyModelGroup(GRPOCausalLMModelGroup):
                 enable_sleep_mode=True,
                 tensor_parallel_size=1,
                 distributed_executor_backend="external_launcher",
-                dtype=to_vllm_dtype_name(resolve_precision(model_cfg.precision)),
+                dtype=resolve_vllm_dtype_name(resolve_precision(model_cfg.precision)),
                 enforce_eager=False,
                 gpu_memory_utilization=0.25,
                 disable_custom_all_reduce=True,
@@ -112,8 +112,14 @@ class GRPOPolicyModelGroup(GRPOCausalLMModelGroup):
             # Pre-load weights into vLLM
             self._sync_weights_to_vllm()
         except Exception as e:
-            logger.warning("vLLM init failed: %s", e)
+            # Anything past the import is a real failure (OOM, bad engine
+            # config, dtype unsupported): silently dropping to HF generate
+            # made a bf16-on-Turing crash look like a 20x slower run.
             self._vllm_engine = None
+            raise RuntimeError(
+                f"vLLM init failed: {e!r}. Fix the engine config, or set SKIP_VLLM=1 "
+                "to use the (much slower) HF generate fallback on purpose."
+            ) from e
 
     def _sync_weights_to_vllm(self):
         """Extract weights through the active parallel backend and load into vLLM."""

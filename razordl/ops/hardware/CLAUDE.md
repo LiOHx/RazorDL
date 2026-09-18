@@ -6,7 +6,7 @@ Loaded when working in `razordl/ops/hardware/`.
 
 - `cuda.py` — CUDA-specific: version, driver compatibility, recommended PyTorch index, **runtime capability probes** (compute capability, native bf16, flash-attn 2, memory)
 - `device.py` — dispatches to backends; `get_available_device()` returns `"cuda"` / `"mps"` / `"cpu"`; `get_torch_device()` / `get_device_id()` are the ONLY device-namespace helpers — `ops/parallel/*` and `ops/distributed/*` import them from here instead of keeping local copies (three verbatim copies once drifted, one frozen at import time)
-- `precision.py` — backend-**independent** policy on top of the probes: `resolve_precision()`, `to_torch_dtype()`, `to_storage_dtype()`, `needs_grad_scaler()`, `needs_autocast()`, `needs_fp32_master_weights()` (the last two are true for fp16 **and** bf16)
+- `precision.py` — backend-**independent** policy on top of the probes: `resolve_precision()`, `to_torch_dtype()`, `to_storage_dtype()`, `needs_grad_scaler()`, `needs_autocast()`, `needs_fp32_master_weights()` (the last two are true for fp16 **and** bf16); `resolve_vllm_dtype_name()` (float16 for bf16 on sm < 80 — vLLM has no emulated bf16)
 - `check_device_compatibility()` — called at training startup; raises `RuntimeError` with install guidance
 
 ## Adding a new backend (ROCm / XPU / …)
