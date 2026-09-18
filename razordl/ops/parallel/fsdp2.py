@@ -18,6 +18,7 @@ import os
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 import logging
 
+from razordl.ops.distributed.utils import is_global_rank0
 from razordl.ops.hardware.device import get_available_device, get_device_id
 
 logger = logging.getLogger(__name__)
@@ -666,7 +667,7 @@ def save_processor_fsdp2(processor, save_dir: str) -> None:
     # 同步
     if dist.is_available() and dist.is_initialized():
         dist.barrier()
-    if int(os.environ.get("LOCAL_RANK", "0")) == 0:
+    if is_global_rank0():
         # 保存 processor 或 tokenizer (自动检测)
         try:
             processor.save_pretrained(save_dir)
@@ -692,9 +693,9 @@ def save_optimizer_fsdp2(model, optimizer=None, save_dir: str | None = None):
         optimizer = model
         model = None
 
-    rank = int(os.environ.get("LOCAL_RANK", "0"))
-    # rank0 创建目录
-    if rank == 0:
+    rank0 = is_global_rank0()
+    # global rank 0 创建目录
+    if rank0:
         _os.makedirs(save_dir, exist_ok=True)
     
     # 同步
@@ -717,7 +718,7 @@ def save_optimizer_fsdp2(model, optimizer=None, save_dir: str | None = None):
             )
         )
         
-        if rank == 0:
+        if rank0:
             print("[SAVE] Using FSDP2 get_optimizer_state_dict API")
     except Exception as e:
         if model is not None:
@@ -725,12 +726,12 @@ def save_optimizer_fsdp2(model, optimizer=None, save_dir: str | None = None):
         # 回退到标准方法
         optimizer_state = optimizer.state_dict()
         
-        if rank == 0:
+        if rank0:
             print(f"[SAVE] Using standard optimizer.state_dict()")
             # print(f"[SAVE DEBUG] FSDP2 API not available: {e}")
     
     # 只有 rank0 保存文件
-    if rank == 0:
+    if rank0:
         # 保存优化器状态
         optimizer_path = _os.path.join(save_dir, "optimizer.pt")
         torch.save(optimizer_state, optimizer_path)

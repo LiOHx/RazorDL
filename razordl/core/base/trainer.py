@@ -17,7 +17,7 @@ from razordl.core.base.config import BaseConfig
 from razordl.core.base import logging
 from razordl.core.base import checkpoint_info as ckpt_info
 from razordl.core.base.metrics import Reducible
-from razordl.ops.distributed.utils import all_gather_object
+from razordl.ops.distributed.utils import all_gather_object, is_global_rank0
 logger = logging.getLogger(__name__)
 
 _WARNED_KEYS = set()
@@ -96,7 +96,7 @@ class BaseTrainer():
         self.trainer_config = config.trainer_config
         self.output_dir = self.config.trainer_config.output_dir
         assert self.output_dir is not None, "output_dir is not set"
-        if int(os.environ.get("LOCAL_RANK", "0")) == 0:
+        if is_global_rank0():
             os.makedirs(self.output_dir, exist_ok=True)
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             torch.distributed.barrier()
@@ -269,7 +269,7 @@ class BaseTrainer():
             workgroup:BaseWorkGroup = getattr(self, workgroup_field)
             workgroup_checkpoint_dir = os.path.join(checkpoint_dir, workgroup_field)
             workgroup.save_model_and_processor(workgroup_checkpoint_dir)
-        if int(os.environ.get("LOCAL_RANK", "0")) == 0:
+        if is_global_rank0():
             info = ckpt_info.build_info(
                 completed_step=getattr(self, "completed_step", 0),
                 config=self.config,
@@ -300,12 +300,12 @@ class BaseTrainer():
         """Save full checkpoint atomically.
 
         Writes to a .tmp directory first, then renames after all files
-        are written.  Only rank 0 writes files and performs the atomic
-        rename; other ranks only participate in the collective FSDP2 save.
+        are written.  Only global rank 0 writes files and performs the
+        atomic rename; other ranks only participate in the collective FSDP2
+        save.
         """
-        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
         tmp_dir = checkpoint_dir + ".tmp"
-        if local_rank == 0:
+        if is_global_rank0():
             if os.path.exists(tmp_dir):
                 shutil.rmtree(tmp_dir)
             os.makedirs(tmp_dir, exist_ok=True)
@@ -313,7 +313,7 @@ class BaseTrainer():
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             torch.distributed.barrier()
         self.save_checkpoint(tmp_dir)
-        if local_rank == 0:
+        if is_global_rank0():
             if not self._is_complete_checkpoint(tmp_dir, require_complete_marker=False):
                 raise RuntimeError(
                     f"Refusing to mark incomplete checkpoint as complete: {tmp_dir}"
@@ -341,9 +341,8 @@ class BaseTrainer():
         else:
             logger.info(f"[TRAINER] Training starting from scratch")
 
-        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
         from tqdm import tqdm
-        if local_rank == 0:
+        if is_global_rank0():
             tqdm_loader = tqdm(
                 data_loader,
                 total=len(data_loader) + self.completed_step,
@@ -372,7 +371,7 @@ class BaseTrainer():
 
             if current_step % self.config.trainer_config.log_info_steps == 0:
                 logger.info(f"[TRAINER] Step {current_step} completed, cost time: {step_time}s, step_info: {step_info}")
-                if int(os.environ.get("LOCAL_RANK", "0")) == 0:
+                if is_global_rank0():
                     step_info_path = os.path.join(self.output_dir, "step_info.jsonl")
                     with open(step_info_path, "a") as f:
                         f.write(json.dumps(step_info, ensure_ascii=False) + "\n")
@@ -391,7 +390,7 @@ class BaseTrainer():
             # checkpoint is a superset, so on a common multiple only the full
             # save runs (it used to write the model twice and rmtree in between).
             if model_only_due and not full_ckpt_due:
-                if local_rank == 0:
+                if is_global_rank0():
                     os.makedirs(checkpoint_dir, exist_ok=True)
                 if torch.distributed.is_available() and torch.distributed.is_initialized():
                     torch.distributed.barrier()
@@ -402,7 +401,7 @@ class BaseTrainer():
 
         logger.info(f"[TRAINER] Training completed")
         checkpoint_dir = self.output_dir
-        if local_rank == 0:
+        if is_global_rank0():
             os.makedirs(checkpoint_dir, exist_ok=True)
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             torch.distributed.barrier()

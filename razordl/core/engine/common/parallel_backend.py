@@ -9,6 +9,7 @@ import torch
 import torch.distributed as dist
 
 from razordl.core.base import logging
+from razordl.ops.distributed.utils import get_global_rank
 from razordl.ops.hardware.device import get_device_id
 
 logger = logging.getLogger(__name__)
@@ -306,9 +307,7 @@ class DDPBackend(ParallelBackend):
         return model
 
     def _rank(self) -> int:
-        if dist.is_available() and dist.is_initialized():
-            return dist.get_rank()
-        return int(os.environ.get("LOCAL_RANK", "0"))
+        return get_global_rank()
 
     def _unwrap(self, model):
         return model.module if hasattr(model, "module") else model

@@ -4,6 +4,7 @@ import os
 
 import torch
 
+from razordl.ops.distributed.utils import is_global_rank0
 from razordl.core.base import logging
 from razordl.core.base.workgroup import BaseModelGroup
 from razordl.core.engine.common.parallel_backend import build_parallel_backend
@@ -267,7 +268,7 @@ class ParallelModelGroup(BaseModelGroup):
         Without it a resumed run restarts from the initial scale and burns
         several steps re-probing for the right one.
         """
-        if self.scaler is None or self.local_rank != 0:
+        if self.scaler is None or not is_global_rank0():
             return
         os.makedirs(checkpoint_dir, exist_ok=True)
         torch.save(self.scaler.state_dict(), os.path.join(checkpoint_dir, "scaler.pt"))

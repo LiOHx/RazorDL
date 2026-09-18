@@ -1,7 +1,31 @@
-import numpy as np
+import os
 from typing import Any
-import torch.distributed as dist
+
+import numpy as np
 import torch
+import torch.distributed as dist
+
+
+def get_global_rank() -> int:
+    """Global rank: the process group when initialised, else ``RANK``, else ``LOCAL_RANK``, else 0."""
+    if dist.is_available() and dist.is_initialized():
+        return dist.get_rank()
+    return int(os.environ.get("RANK", os.environ.get("LOCAL_RANK", "0")))
+
+
+def is_global_rank0() -> bool:
+    """Gate for writes that must happen exactly once per job.
+
+    ``LOCAL_RANK == 0`` is true on *every node*, so files gated on it were
+    written once per node: on a shared filesystem that is N concurrent
+    writers of the same checkpoint_info.json / tokenizer / scaler.pt, and the
+    atomic rename in the trainer raced with itself.  Ray Train sets ``RANK``
+    before the process group exists, so the env fallback keeps early-startup
+    writes (output dir creation) single-writer too.
+    """
+    return get_global_rank() == 0
+
+
 def _gather_across_ranks(obj):
     if dist.is_available() and dist.is_initialized():
         world_size = dist.get_world_size()
