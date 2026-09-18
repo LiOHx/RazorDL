@@ -55,6 +55,16 @@ def _collect_dependencies(entry_files: list[str], razordl_root: str) -> set[str]
             dep_file = _resolve_module_file(module_name, razordl_root)
             if dep_file and dep_file not in processed:
                 to_process.append(dep_file)
+        # ops/hardware/device.py loads its backends (cuda.py, ...) by name
+        # through importlib at runtime, which the AST scan cannot see.  Ship
+        # the whole directory whenever any of it is used, or the exported
+        # project dies with ModuleNotFoundError on the first device probe.
+        hardware_dir = os.path.join(razordl_root, "razordl", "ops", "hardware")
+        if os.path.dirname(file_path) == hardware_dir:
+            for sibling in os.listdir(hardware_dir):
+                sibling_path = os.path.join(hardware_dir, sibling)
+                if sibling.endswith(".py") and sibling_path not in processed:
+                    to_process.append(sibling_path)
     return all_files
 
 

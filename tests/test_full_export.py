@@ -1,7 +1,12 @@
 import importlib.util
+import os
+import re
+import subprocess
 import sys
 from argparse import Namespace
 from pathlib import Path
+
+import pytest
 
 from razordl.cli.init import handle_init
 
@@ -69,3 +74,42 @@ def test_full_export_includes_accumulation_scaled_backward(tmp_path):
     assert "def _backward_loss" in common_workgroup
     assert "loss / accumulate_grad_steps" in common_workgroup
     assert "self._backward_loss(loss, self.model_group)" in sft_workgroup
+
+
+def _presets():
+    presets_dir = Path(__file__).resolve().parent.parent / "razordl" / "presets"
+    return sorted(p.name for p in presets_dir.iterdir() if p.is_dir() and not p.name.startswith("_"))
+
+
+_OPTIONAL_THIRD_PARTY = {"PIL", "decord", "cv2", "qwen_vl_utils", "vllm", "av"}
+
+
+@pytest.mark.parametrize("preset", _presets())
+def test_full_project_runs_without_razordl_installed(tmp_path, preset):
+    """A full-mode project must import and probe the device with `razordl` absent.
+
+    ops/hardware/device.py used to load its backends through a hardcoded
+    "razordl.ops.hardware.<name>" string, which the export's AST scan could
+    not see (cuda.py was never shipped) and which named a package the
+    exported project no longer has.
+    """
+    handle_init(Namespace(project_name=preset, preset=preset, path=str(tmp_path), mode="full"))
+    src = tmp_path / preset / "src"
+    assert (src / "ops" / "hardware" / "cuda.py").exists()
+
+    code = (
+        "import sys; sys.modules['razordl'] = None\n"
+        "import main\n"
+        "from ops.hardware import device\n"
+        "device.get_available_device(); device.describe()\n"
+        "print('OK')\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code], cwd=src, capture_output=True, text=True,
+        env={**os.environ, "PYTHONPATH": str(src)},
+    )
+    missing = re.findall(r"No module named '([^'.]+)", proc.stderr)
+    if proc.returncode != 0 and missing and set(missing) <= _OPTIONAL_THIRD_PARTY:
+        pytest.skip(f"optional dependency not installed: {missing}")
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert "OK" in proc.stdout

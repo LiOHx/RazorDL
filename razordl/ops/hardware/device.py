@@ -10,8 +10,13 @@ import torch
 
 
 def _backend(name: str):
-    """Lazily import a backend module (see this directory's CLAUDE.md hard rule)."""
-    return importlib.import_module(f"razordl.ops.hardware.{name}")
+    """Lazily import a backend module (see this directory's CLAUDE.md hard rule).
+
+    Resolved relative to ``__package__`` so the same file works inside the
+    ``razordl`` package and in a full-mode export, where it lives at
+    ``ops.hardware`` and ``razordl`` is not installed.
+    """
+    return importlib.import_module(f"{__package__}.{name}")
 
 
 def get_available_device() -> str:

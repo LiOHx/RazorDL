@@ -17,6 +17,6 @@ Loaded when working in `razordl/ops/hardware/`.
 
 ## Hard rules
 
-- **IMPORTANT — Use `importlib.import_module` for lazy backend loading.** Top-level imports cause circular imports during package init.
+- **IMPORTANT — Use `importlib.import_module(f"{__package__}.{name}")` for lazy backend loading.** Top-level imports cause circular imports during package init, and a hardcoded `razordl.ops.hardware.` string breaks full-mode exports (the file lives at `ops/hardware/` there and `razordl` is not installed); `core/export/full_project.py` ships this whole directory because the AST scan cannot see these string imports.
 - **IMPORTANT — Capability criteria are compute capability, never `torch.cuda.is_bf16_supported()`.** That call defaults to `including_emulation=True` and returns True on Turing (sm_75), where bf16 is emulated in software, so it cannot answer "is bf16 native here?" — use `get_device_capability()[0] >= 8`.
 - **Emulated bf16 is a supported target, not a fallback to route around.** `resolve_precision("auto")` returns bf16 on every CUDA GPU; on sm_75 the emulation measured faster and lighter than the only correct fp16 path (fp32 masters + autocast) — numbers in `precision.py`. Change that policy only against a fresh measurement.
