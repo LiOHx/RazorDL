@@ -28,14 +28,19 @@ class DistDFTLoss(torch.nn.Module):
         self.mini_scale = mini_scale
 
     def forward(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        # logits and labels are already shifted by the caller
+        # logits and labels are already shifted by the caller.  fp32 for the
+        # same reason as DistCrossEntropyLoss: the per-token sum overflows fp16.
         ce_loss = torch.nn.functional.cross_entropy(
-            logits, labels,
+            logits.float(), labels,
             ignore_index=self.ignore_index,
             reduction="none",
         )
 
-        p_target = torch.exp(-ce_loss)
+        # The weight is a stop-gradient term (DFT: -sum sg(p) log p).  Without
+        # detach the gradient is exp(-ce) * (1 - ce) * d(ce), which flips sign
+        # for every token with ce > 1 and pushes low-confidence tokens further
+        # away instead of towards the target.
+        p_target = torch.exp(-ce_loss).detach()
         p_target = torch.clamp(p_target, min=self.mini_scale)
 
         valid_mask = (labels != self.ignore_index).float()
