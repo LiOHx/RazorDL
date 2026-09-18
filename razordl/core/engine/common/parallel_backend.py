@@ -135,14 +135,20 @@ class FSDP2Backend(ParallelBackend):
             if mc.enable_gradient_checkpointing:
                 self.model_group._enable_gradient_checkpointing_after_wrap(model)
 
-            if mc.enable_activation_offload:
-                from razordl.ops.parallel.activation import enable_activation_offloading
+        # Both branches: the offload hooks attach to the fully_shard-wrapped
+        # layers, which the LoRA wrap produces too.  It used to be wired only
+        # on the non-LoRA branch, so `enable_activation_offload: true` with
+        # LoRA (the default) was silently ignored.
+        if mc.enable_activation_offload:
+            from razordl.ops.parallel.activation import enable_activation_offloading
 
-                enable_activation_offloading(
-                    model,
-                    strategy="fsdp2",
-                    enable_ckpt=mc.enable_gradient_checkpointing,
-                )
+            n_layers = enable_activation_offloading(
+                model,
+                strategy="fsdp2",
+                enable_ckpt=mc.enable_gradient_checkpointing,
+            )
+            if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+                logger.info(f"[FSDP2] activation offload hooks attached to {n_layers} layers")
 
         return model
 

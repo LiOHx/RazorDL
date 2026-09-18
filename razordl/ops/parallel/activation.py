@@ -516,7 +516,8 @@ def enable_activation_offloading(model, strategy, enable_ckpt=False):
         "enable_ckpt" arguments.
 
     Returns:
-
+        The number of FSDP-wrapped layers that got offload hooks (0 when the
+        model has fewer than 3 such layers and offloading was skipped).
     """
 
     assert strategy == "fsdp" or strategy == "fsdp2", "activation offloading only supports fsdp strategy"
@@ -538,7 +539,7 @@ def enable_activation_offloading(model, strategy, enable_ckpt=False):
     get_layers(model)
     if len(layers) < 3:
         logger.warning(f"Find only {len(layers)} fsdp layers, not neccessary to enable async activation offloading")
-        return
+        return 0
 
     tensor_filter = FSDPParameterFilter()
     context, sync_func = get_activation_offload_context(len(layers) - 1, len(layers), tensor_filter)
@@ -557,3 +558,4 @@ def enable_activation_offloading(model, strategy, enable_ckpt=False):
         if isinstance(layer, FSDP):
             module = module._fsdp_wrapped_module
         handler.wrap_module_forward_method(module)
+    return len(layers)
