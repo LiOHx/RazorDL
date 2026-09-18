@@ -60,25 +60,32 @@ class SFTWorkGroup(WorkGroup):
         labels = input_dict.pop("labels")
         model = self.model_group.model
 
-        loss = self._compute_loss(model, input_dict, labels)
+        # split_for_sp hands back labels already shifted to next-token
+        # targets (see its docstring); only the non-SP path shifts here.
+        loss = self._compute_loss(model, input_dict, labels, shifted=self.sp_size > 1)
         raw_loss = loss.detach()
         self._backward_loss(loss, self.model_group)
         return {"loss": raw_loss.item()}
 
-    def _compute_loss(self, model, input_dict, labels):
+    def _compute_loss(self, model, input_dict, labels, shifted: bool = False):
+        """``shifted`` means *labels* already hold next-token targets aligned
+        with the unshifted logits (the SP split does this); otherwise the
+        usual ``logits[:, :-1]`` / ``labels[:, 1:]`` shift is applied here."""
         if self.chunked_loss:
-            return self._chunked_loss_compute(model, input_dict, labels)
-        return self._simple_loss_compute(model, input_dict, labels)
+            return self._chunked_loss_compute(model, input_dict, labels, shifted)
+        return self._simple_loss_compute(model, input_dict, labels, shifted)
 
-    def _simple_loss_compute(self, model, input_dict, labels):
+    def _simple_loss_compute(self, model, input_dict, labels, shifted: bool = False):
         output = model(**input_dict)
         logits = output.logits
+        if not shifted:
+            logits, labels = logits[:, :-1, :], labels[:, 1:]
         return self.criterion(
-            logits[:, :-1, :].reshape(-1, logits.size(-1)),
-            labels[:, 1:].reshape(-1),
+            logits.reshape(-1, logits.size(-1)),
+            labels.reshape(-1),
         )
 
-    def _chunked_loss_compute(self, model, input_dict, labels):
+    def _chunked_loss_compute(self, model, input_dict, labels, shifted: bool = False):
         """Monkey-patch forward to skip lm_head, then compute loss in chunks."""
         lm_head = model.lm_head
         text_model = self._find_text_model(model)
@@ -105,8 +112,11 @@ class SFTWorkGroup(WorkGroup):
 
             loss = None
             if labels is not None:
-                hs = hidden_states[:, :-1, :].contiguous()
-                target = labels[:, 1:].contiguous()
+                if shifted:
+                    hs, target = hidden_states, labels
+                else:
+                    hs = hidden_states[:, :-1, :].contiguous()
+                    target = labels[:, 1:].contiguous()
                 seq_len = hs.shape[1]
                 total_loss = torch.zeros(1, device=hs.device, dtype=torch.float32)
 

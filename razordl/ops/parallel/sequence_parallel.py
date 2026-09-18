@@ -166,6 +166,14 @@ def split_for_sp(
 
     Returns a dict ready to be fed to the model, including correct
     ``position_ids`` so that RoPE sees the true absolute positions.
+
+    ``labels`` are returned **already shifted** to next-token targets
+    (``labels[:, 1:]`` padded with -100, then sliced), aligned with the
+    *unshifted* local logits.  Shifting after the split would drop the
+    target at every chunk boundary, because the token that position
+    ``hi - 1`` must predict lives in the next rank's chunk.  Callers must
+    therefore not shift again when ``sp_size > 1`` (the ``sp_size <= 1``
+    branch returns the labels untouched).
     """
     sp_rank = get_sp_rank()
     sp_size = get_sp_world_size()
@@ -194,7 +202,8 @@ def split_for_sp(
                              .unsqueeze(0).expand(B, -1),
     }
     if labels is not None:
-        result["labels"] = labels[:, lo:hi].contiguous()
+        shifted = torch.nn.functional.pad(labels[:, 1:], (0, 1), value=-100)
+        result["labels"] = shifted[:, lo:hi].contiguous()
     return result
 
 
