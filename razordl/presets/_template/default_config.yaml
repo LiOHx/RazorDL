@@ -41,8 +41,8 @@ max_grad_norm: 1.0                      # 梯度裁剪
 # [不常用] 默认值即可，知道在哪就行
 # ============================================================
 
-# ---- [改] 你的 preset 特有参数 ----
-# new_extra_param: 0.0                   # [改] 描述你的特有配置
+# ---- [改] 你的 preset 特有参数 (config.py 的 NEWDataConfig 同名字段) ----
+new_param: 0.0                          # [改] 描述你的特有配置
 
 # ---- Data & Tokenization ----
 enable_gradient_checkpointing: false    # 梯度检查点

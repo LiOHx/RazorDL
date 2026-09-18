@@ -53,11 +53,15 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     )
     header = imports + "\n\nlogger = logging.getLogger(__name__)\n\n"
     wg_cls = """class WorkGroup(_BaseWorkGroup):
+    \"\"\"NEW preset: [改] one-line description.\"\"\"
+
     model_group_class = ModelGroup
 
     def __init__(self, config):
         super().__init__(config)
-        self.criterion = DistNEWLoss(ignore_index=-100, new_param=0.0)  # [改]
+        dc = config.data_config
+        new_param = getattr(dc, "new_param", 0.0)  # [改]
+        self.criterion = DistNEWLoss(ignore_index=-100, new_param=new_param)
         self.chunked_loss = False
 """
     return "\n".join([header, loss_cls + "\n\n", model_cls + "\n\n", base_wg_cls + "\n\n", wg_cls])

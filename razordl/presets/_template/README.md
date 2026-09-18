@@ -7,9 +7,16 @@
 
 2. Edit files marked `[改]`:
    - `workgroup.py` — your loss class + WorkGroup (core difference)
-   - `__init__.py` — rename NEWConfig/NEWWorkGroup/DistNEWLoss to your names
-   - `default_config.yaml` — preset name, description, extra params
+   - `config.py` — rename `NEWConfig` / `NEWDataConfig`, add your flat keys to the data config
+   - `__init__.py` — rename NEWConfig/NEWWorkGroup/DistNEWLoss, fix the
+     `razordl.presets.new.*` import paths to your directory name, and rename the
+     `New*` CLI alias block to the CamelCase of your directory name
+     (`"".join(p.capitalize() for p in "<new_name>".split("_"))`, e.g. `my_rl` → `MyRl*`)
+   - `default_config.yaml` — `preset: <new_name>`, description, extra params
    - `_export.py` — rename loss class in string replacements
+
+   The template is a working preset as copied: `cp -r _template new` yields a
+   preset named `new` that inits/trains with a plain CE loss.
 
 3. Files marked `[不改]` can usually be left as-is:
    - `_export_full.py` — re-exports the engine profile
