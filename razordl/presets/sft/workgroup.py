@@ -6,8 +6,7 @@ from tensordict.tensordict import TensorDict
 
 from razordl.core.base import logging
 from razordl.core.engine.single_model.workgroup import ModelGroup as _ModelGroup, WorkGroup
-from razordl.ops.distributed.utils import all_gather_object
-from razordl.ops.loss.distributed import DistCrossEntropyLoss
+from razordl.ops.loss.distributed import DistCrossEntropyLoss, global_token_denominator
 from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
 
 logger = logging.getLogger(__name__)
@@ -137,8 +136,8 @@ class SFTWorkGroup(WorkGroup):
                     total_loss = total_loss + ce.squeeze(0)
 
                 valid_local = (target != -100).sum().item()
-                batch_valid = sum(all_gather_object(valid_local))
-                loss = total_loss / max(batch_valid, 1)
+                denominator = global_token_denominator(valid_local)
+                loss = total_loss / max(denominator, 1)
 
             from transformers.modeling_outputs import CausalLMOutputWithPast
 

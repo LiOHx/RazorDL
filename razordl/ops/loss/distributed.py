@@ -4,7 +4,24 @@ from razordl.ops.distributed.utils import all_gather_object
 
 
 def distributed_token_count(local_count: int | float) -> float:
+    """Sum of *local_count* over every rank (1 rank when dist is off)."""
     return float(sum(all_gather_object(local_count)))
+
+
+def global_token_denominator(local_count: int | float) -> float:
+    """Denominator that turns a per-rank token sum into the global token mean.
+
+    Returns ``global_count / world_size``.  FSDP2 and DDP *average* gradients
+    across ranks, so a rank that computes ``local_sum / global_count`` ends up
+    contributing ``1/W`` of the true global-mean gradient -- and the rank-mean
+    of the logged losses (``all_gather_object(float_mean=True)``) is ``1/W`` of
+    the real per-token loss (an 8-GPU run logged one eighth of its CE).
+    Dividing by ``global_count / W`` instead makes both the reduced gradient
+    and the logged value equal the global token mean exactly, on any world
+    size, including the SP ranks that share a sequence.
+    """
+    gathered = all_gather_object(local_count)
+    return float(sum(gathered)) / len(gathered)
 
 
 class DistCrossEntropyLoss(torch.nn.Module):
@@ -23,5 +40,5 @@ class DistCrossEntropyLoss(torch.nn.Module):
         # the logits -- with a large vocabulary, prefer chunked_loss.
         ce_loss = self.ce(logits.float(), labels)
         valid_tokens = (labels != self.ignore_index).sum().item()
-        batch_valid_tokens = distributed_token_count(valid_tokens)
-        return ce_loss.sum() / max(batch_valid_tokens, 1)
+        denominator = global_token_denominator(valid_tokens)
+        return ce_loss.sum() / max(denominator, 1)

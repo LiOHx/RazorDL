@@ -8,7 +8,7 @@ from razordl.core.engine.on_policy_single_model.modelgroup import ModelGroup as 
 from razordl.core.engine.on_policy_single_model.config import Config
 from razordl.core.base import logging
 from razordl.core.base.metrics import DistStats
-from razordl.ops.distributed.utils import all_gather_object
+from razordl.ops.loss.distributed import global_token_denominator
 from razordl.ops.hardware.precision import resolve_precision, to_vllm_dtype_name
 from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
 from razordl.ops.model.per_token_logp import compute_per_token_log_probs
@@ -415,11 +415,8 @@ class GRPOWorkGroup(_WorkGroup):
             "token_count": token_count.item(),
         }
 
-        # FSDP2 scaling: keep the same logic as the original compute_loss.
-        local_bs = input_ids.size(0)
-        global_bs = sum(all_gather_object(local_bs))
-        loss_sum = loss_sum * local_bs / global_bs
-
+        # Raw local sum; _run_update_step divides by global_token_denominator,
+        # which already accounts for the cross-rank gradient average.
         return loss_sum, metrics
 
     def compute_loss(self, rollout_output: dict, advantages: torch.Tensor) -> torch.Tensor:
@@ -453,11 +450,10 @@ class GRPOWorkGroup(_WorkGroup):
 
         ref_group = self._get_reference_model_group()
 
-        # Global token count for unified normalization across all chunks.
+        # Global-mean denominator shared by every chunk (see global_token_denominator).
         global_response_mask = rollout_output["response_mask"][:, 1:]
         local_token_count = global_response_mask.sum().item()
-        global_token_count = sum(all_gather_object(local_token_count))
-        global_token_count = max(global_token_count, 1e-8)
+        global_token_count = max(global_token_denominator(local_token_count), 1e-8)
 
         # Chunked loss computation.
         total_samples = rollout_output["input_ids"].size(0)
@@ -469,7 +465,6 @@ class GRPOWorkGroup(_WorkGroup):
         total_ratio_sum = 0.0
         total_tokens = 0.0
         total_loss_sum = 0.0
-        num_chunks = 0
 
         for i in range(0, total_samples, mini_batch_size):
             end = min(i + mini_batch_size, total_samples)
@@ -497,7 +492,6 @@ class GRPOWorkGroup(_WorkGroup):
             total_clipped += metrics["clipped_count"]
             total_ratio_sum += metrics["ratio_sum"]
             total_tokens += metrics["token_count"]
-            num_chunks += 1
 
         # Token-weighted global metrics across all chunks.
         self._last_loss_info = {
@@ -507,7 +501,7 @@ class GRPOWorkGroup(_WorkGroup):
             "mean_ratio": total_ratio_sum / (total_tokens + 1e-8),
         }
 
-        avg_loss = total_loss_sum / (num_chunks * global_token_count)
+        avg_loss = total_loss_sum / global_token_count
 
         return dict(
             loss=avg_loss,

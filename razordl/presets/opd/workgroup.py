@@ -15,7 +15,7 @@ from razordl.core.base.metrics import DistStats
 from razordl.core.engine.on_policy_single_model.config import Config
 from razordl.core.engine.on_policy_single_model.modelgroup import ModelGroup as _ModelGroup
 from razordl.core.engine.on_policy_single_model.workgroup import WorkGroup as _WorkGroup
-from razordl.ops.distributed.utils import all_gather_object
+from razordl.ops.loss.distributed import global_token_denominator
 from razordl.ops.hardware.precision import resolve_precision, to_vllm_dtype_name
 from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
 from razordl.ops.model.per_token_logp import compute_per_token_log_probs
@@ -392,9 +392,9 @@ class OPDWorkGroup(_WorkGroup):
             "token_count": response_mask_shifted.sum().item(),
         }
 
-        local_bs = input_ids.size(0)
-        global_bs = sum(all_gather_object(local_bs))
-        loss_sum = per_token_loss.sum() * local_bs / global_bs
+        # Raw local sum; _run_update_step divides by global_token_denominator,
+        # which already accounts for the cross-rank gradient average.
+        loss_sum = per_token_loss.sum()
         return loss_sum, metrics
 
     def _run_update_step(self, input_dict: dict, step: int) -> dict:
@@ -432,7 +432,7 @@ class OPDWorkGroup(_WorkGroup):
         # ---- 4) Global normalization (chunked-loss pattern from GRPO) ------
         response_mask_shifted = rollout_output["response_mask"][:, 1:]
         local_token_count = response_mask_shifted.sum().item()
-        global_token_count = max(sum(all_gather_object(local_token_count)), 1e-8)
+        global_token_count = max(global_token_denominator(local_token_count), 1e-8)
 
         total_samples = rollout_output["input_ids"].size(0)
         mini_batch_size = input_dict["prompt_ids"].size(0)
@@ -441,7 +441,6 @@ class OPDWorkGroup(_WorkGroup):
         total_clipped = 0.0
         total_ratio_sum = 0.0
         total_tokens = 0.0
-        num_chunks = 0
 
         # ---- 5) Chunked PPO PG loss + backward ----------------------------
         for i in range(0, total_samples, mini_batch_size):
@@ -463,7 +462,6 @@ class OPDWorkGroup(_WorkGroup):
             total_clipped += metrics["clipped_count"]
             total_ratio_sum += metrics["ratio_sum"]
             total_tokens += metrics["token_count"]
-            num_chunks += 1
 
         valid = response_mask_shifted.bool()
         self._last_metrics = {
@@ -472,7 +470,7 @@ class OPDWorkGroup(_WorkGroup):
         }
 
         return dict(
-            loss=total_loss_sum / max(num_chunks * global_token_count, 1e-8),
+            loss=total_loss_sum / global_token_count,
             advantage=DistStats.from_tensor(advantages[valid]),
             distill_loss=DistStats.from_tensor(distill_loss[valid]),
             opd=self._last_metrics,

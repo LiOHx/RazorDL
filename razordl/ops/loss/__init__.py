@@ -1,5 +1,5 @@
 """Loss helpers shared by presets and engines."""
 
-from razordl.ops.loss.distributed import DistCrossEntropyLoss, distributed_token_count
+from razordl.ops.loss.distributed import DistCrossEntropyLoss, distributed_token_count, global_token_denominator
 
-__all__ = ["DistCrossEntropyLoss", "distributed_token_count"]
+__all__ = ["DistCrossEntropyLoss", "distributed_token_count", "global_token_denominator"]
