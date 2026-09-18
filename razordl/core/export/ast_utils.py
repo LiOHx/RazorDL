@@ -34,3 +34,27 @@ def extract_imports(source: str) -> str:
             for i in range(node.lineno - 1, node.end_lineno):
                 result.append(lines[i])
     return "\n".join(result)
+
+
+def replace_class_docstring(class_source: str, new_docstring: str) -> str:
+    """Replace (or insert) the docstring of the single class in *class_source*.
+
+    Used when a preset re-exports another preset's class under a new name:
+    the inherited docstring describes the *source* preset (e.g. "SFT preset:
+    ...") and must not survive into the generated file.
+    """
+    tree = ast.parse(class_source)
+    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef))
+    lines = class_source.splitlines()
+    first = cls.body[0]
+    indent = " " * first.col_offset
+    doc_line = f'{indent}"""{new_docstring}"""'
+    if (
+        isinstance(first, ast.Expr)
+        and isinstance(first.value, ast.Constant)
+        and isinstance(first.value.value, str)
+    ):
+        lines[first.lineno - 1 : first.end_lineno] = [doc_line]
+    else:
+        lines.insert(first.lineno - 1, doc_line)
+    return "\n".join(lines)

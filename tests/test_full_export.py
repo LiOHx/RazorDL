@@ -113,3 +113,16 @@ def test_full_project_runs_without_razordl_installed(tmp_path, preset):
         pytest.skip(f"optional dependency not installed: {missing}")
     assert proc.returncode == 0, proc.stderr[-2000:]
     assert "OK" in proc.stdout
+
+
+def test_dft_export_does_not_carry_sft_docstring(tmp_path):
+    from razordl.core.export.ast_utils import replace_class_docstring
+
+    handle_init(Namespace(project_name="dft_full", preset="dft", path=str(tmp_path), mode="full"))
+    workgroup = (tmp_path / "dft_full" / "src" / "workgroup.py").read_text()
+    assert "SFT preset" not in workgroup
+    assert "Base LM workgroup" in workgroup
+
+    # Helper inserts when there is no docstring, replaces when there is.
+    assert replace_class_docstring("class A:\n    x = 1\n", "doc") == 'class A:\n    """doc"""\n    x = 1'
+    assert replace_class_docstring('class A:\n    """old\n    more"""\n    x = 1\n', "doc") == 'class A:\n    """doc"""\n    x = 1'

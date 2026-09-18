@@ -4,7 +4,12 @@ import importlib.util
 import os
 import re
 
-from razordl.core.export.ast_utils import extract_class, extract_imports, replace_ident
+from razordl.core.export.ast_utils import (
+    extract_class,
+    extract_imports,
+    replace_class_docstring,
+    replace_ident,
+)
 
 
 def _sft_preset_dir(preset_pkg_dir: str) -> str:
@@ -23,6 +28,11 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     base_wg_cls = replace_ident(extract_class(sft_src, "SFTWorkGroup"), "SFTWorkGroup", "_BaseWorkGroup")
     base_wg_cls = replace_ident(base_wg_cls, "SFTModelGroup", "ModelGroup")
     base_wg_cls = base_wg_cls.replace("class _BaseWorkGroup(WorkGroup):", "class _BaseWorkGroup(_WorkGroup):")
+    # The extracted class carries SFT's own docstring; the generated file
+    # is not an SFT preset (presets/CLAUDE.md: strip SFT-specific docstrings).
+    base_wg_cls = replace_class_docstring(
+        base_wg_cls, "Base LM workgroup: SP split, next-token CE, chunked loss."
+    )
     loss_cls = extract_class(dft_src, "DistDFTLoss")
 
     # Merge imports from both sources, deduplicating.  Filter out the
