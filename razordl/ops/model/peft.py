@@ -1,10 +1,42 @@
 
 import os
 import logging
+import re
 
 from safetensors.torch import load_file
 
 logger = logging.getLogger(__name__)
+
+_MODULES_TO_SAVE_RE = re.compile(r"\.modules_to_save\.[^.]+")
+
+
+def adapter_state_dict_for_saving(state_dict: dict) -> dict:
+    """Pick the trainable-adapter tensors out of a full PEFT state dict.
+
+    Returns them under the key layout PEFT's own ``get_peft_model_state_dict``
+    writes (and vLLM reads): no ``base_model.model.`` prefix, no adapter name.
+    Two families qualify:
+
+    - LoRA matrices: ``...q_proj.lora_A.default.weight`` -> ``...q_proj.lora_A.weight``
+    - ``modules_to_save`` copies (``lm_head`` / ``embed_tokens`` trained in full):
+      ``base_model.model.lm_head.modules_to_save.default.weight`` -> ``lm_head.weight``
+
+    The second family was silently dropped once: a ``"lora_" in key`` filter
+    left the trained ``lm_head`` out of ``adapter_model.safetensors`` while
+    ``save_full_model=False`` wrote nothing else, so resume and export
+    reloaded the untrained base head.
+    """
+    adapter_state_dict = {}
+    for key, value in state_dict.items():
+        if ".modules_to_save." in key:
+            new_key = _MODULES_TO_SAVE_RE.sub("", key.replace("base_model.model.", ""))
+        elif "lora_" in key or "adapter" in key:
+            new_key = key.replace("base_model.model.", "").replace(".default", "")
+        else:
+            continue
+        adapter_state_dict[new_key] = value
+    return adapter_state_dict
+
 
 def get_adapter_state_dict(adapter_model_path):
     def _normalize_lora_key(key: str) -> str:
@@ -64,12 +96,16 @@ def set_adapter_state_dict(model, adapter_state_dict):
         except Exception:
             pass
 
-    # load_state_dict fallback — must restore .default. ourselves
-    _lora_model_keys = [k for k in model_keys if "lora_" in k.lower()]
+    # load_state_dict fallback — must restore .default. (and the
+    # modules_to_save.default wrapper) ourselves
+    _lora_model_keys = [
+        k for k in model_keys if "lora_" in k.lower() or ".modules_to_save." in k
+    ]
     if any(".default." in k for k in _lora_model_keys):
         _key_map = {}
         for mk in _lora_model_keys:
-            nk = mk.replace("base_model.model.", "").replace(".default.", ".")
+            nk = mk.replace("base_model.model.", "")
+            nk = _MODULES_TO_SAVE_RE.sub("", nk).replace(".default.", ".")
             _key_map[nk] = mk
         _fixed = {}
         for k, v in sd.items():

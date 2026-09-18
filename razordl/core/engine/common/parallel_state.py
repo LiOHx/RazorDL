@@ -103,11 +103,9 @@ def save_full_or_adapter_model(
     if is_peft_model and save_lora_separately:
         adapter_dir = os.path.join(save_dir, "adapter")
         os.makedirs(adapter_dir, exist_ok=True)
-        adapter_state_dict = {}
-        for key, value in state_dict.items():
-            if "lora_" in key or "adapter" in key:
-                new_key = key.replace("base_model.model.", "").replace(".default", "")
-                adapter_state_dict[new_key] = value
+        from razordl.ops.model.peft import adapter_state_dict_for_saving
+
+        adapter_state_dict = adapter_state_dict_for_saving(state_dict)
         if adapter_state_dict:
             from safetensors.torch import save_file
 

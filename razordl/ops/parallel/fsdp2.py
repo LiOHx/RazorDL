@@ -500,19 +500,11 @@ def save_fsdp2(
                 # 1. 保存 LoRA adapter（只有几MB）
                 adapter_dir = _os.path.join(save_dir, "adapter")
                 
-                # 提取 LoRA 参数
-                adapter_state_dict = {}
-                base_model_state_dict = {}
-                
-                for key, value in state_dict.items():
-                    # PEFT 的 LoRA 参数通常包含 "lora_" 关键字
-                    if "lora_" in key or "adapter" in key:
-                        # 清洗 key 以兼容 vllm 和通用加载
-                        new_key = key.replace("base_model.model.", "").replace(".default", "")
-                        adapter_state_dict[new_key] = value
-                    else:
-                        base_model_state_dict[key] = value
-                
+                # LoRA matrices + modules_to_save copies, in PEFT's saved key layout
+                from razordl.ops.model.peft import adapter_state_dict_for_saving
+
+                adapter_state_dict = adapter_state_dict_for_saving(state_dict)
+
                 # 保存 adapter
                 if adapter_state_dict:
                     from safetensors.torch import save_file as _save_safetensors
@@ -884,19 +876,11 @@ def save_model_and_processor_fsdp2(model: FSDPModule, processor, save_dir, save_
                 # 1. 保存 LoRA adapter（只有几MB）
                 adapter_dir = _os.path.join(save_dir, "adapter")
                 
-                # 提取 LoRA 参数
-                adapter_state_dict = {}
-                base_model_state_dict = {}
-                
-                for key, value in state_dict.items():
-                    # PEFT 的 LoRA 参数通常包含 "lora_" 关键字
-                    if "lora_" in key or "adapter" in key:
-                        # 清洗 key 以兼容 vllm 和通用加载
-                        new_key = key.replace("base_model.model.", "").replace(".default", "")
-                        adapter_state_dict[new_key] = value
-                    else:
-                        base_model_state_dict[key] = value
-                
+                # LoRA matrices + modules_to_save copies, in PEFT's saved key layout
+                from razordl.ops.model.peft import adapter_state_dict_for_saving
+
+                adapter_state_dict = adapter_state_dict_for_saving(state_dict)
+
                 # 保存 adapter
                 if adapter_state_dict:
                     from safetensors.torch import save_file as _save_safetensors
