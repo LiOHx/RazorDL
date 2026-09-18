@@ -373,11 +373,13 @@ class GRPOWorkGroup(_WorkGroup):
         # (ratio == 1.0), so clip_fraction is always 0.  The clip only becomes
         # meaningful if multi-epoch / mini-batch replay is added later.
         policy_log_probs = compute_per_token_log_probs(
-            self.policy_model_group.model, input_ids, attention_mask
+            self.policy_model_group.model, input_ids, attention_mask,
+            temperature=self.temperature,
         )
         old_log_probs = policy_log_probs.detach()
         ref_log_probs = compute_per_token_log_probs(
-            self.reference_model_group.model, input_ids, attention_mask, no_grad=True
+            self.reference_model_group.model, input_ids, attention_mask,
+            temperature=self.temperature, no_grad=True,
         )
 
         log_ratio = policy_log_probs - old_log_probs

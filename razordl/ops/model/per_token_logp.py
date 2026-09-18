@@ -22,6 +22,7 @@ def compute_per_token_log_probs(
     input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     *,
+    temperature: float = 1.0,
     logp_min_clamp: float | None = None,
     no_grad: bool = False,
 ) -> torch.Tensor:
@@ -31,6 +32,12 @@ def compute_per_token_log_probs(
         model: A causal LM with ``forward(input_ids, attention_mask) -> output.logits``.
         input_ids: ``[B, L]`` token ids.
         attention_mask: ``[B, L]`` 0/1 mask.
+        temperature: The sampling temperature the rollout used.  The
+            log-probs must describe the distribution the tokens were *drawn*
+            from, so the logits are divided by it before the softmax (as TRL
+            and verl do); at T=1 the untempered log-probs were a biased
+            estimator for every T<1 rollout.  top-p / top-k cannot be matched
+            exactly and are ignored, as elsewhere.
         logp_min_clamp: Optional lower bound clamp on the returned log-probs.
             Useful to keep PG ratios numerically sane when one of the two
             policies assigns near-zero probability.
@@ -44,6 +51,8 @@ def compute_per_token_log_probs(
     with ctx:
         output = model(input_ids=input_ids, attention_mask=attention_mask)
         logits_shifted = output.logits[:, :-1, :].contiguous()
+        if temperature != 1.0:
+            logits_shifted = logits_shifted / temperature
         target_ids = input_ids[:, 1:].contiguous()
         log_probs = F.log_softmax(logits_shifted, dim=-1)
         gathered = torch.gather(log_probs, dim=2, index=target_ids.unsqueeze(-1)).squeeze(-1)

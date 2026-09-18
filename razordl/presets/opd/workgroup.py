@@ -372,6 +372,7 @@ class OPDWorkGroup(_WorkGroup):
             self.policy_model_group.model,
             input_ids,
             attention_mask,
+            temperature=self.temperature,
             logp_min_clamp=self.logp_min_clamp,
             no_grad=False,
         )
@@ -411,6 +412,7 @@ class OPDWorkGroup(_WorkGroup):
                 policy_group.model,
                 rollout_output["input_ids"],
                 rollout_output["attention_mask"],
+                temperature=self.temperature,
                 logp_min_clamp=self.logp_min_clamp,
                 no_grad=True,
             )
@@ -422,6 +424,7 @@ class OPDWorkGroup(_WorkGroup):
                 teacher_group.model,
                 rollout_output["input_ids"],
                 rollout_output["attention_mask"],
+                temperature=self.temperature,
                 logp_min_clamp=self.logp_min_clamp,
                 no_grad=True,
             )
