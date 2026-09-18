@@ -56,11 +56,13 @@ def _log_hardware_capabilities(config, logger) -> None:
             "[HW] fp16 path active: fp32 master weights for trainable params "
             "+ GradScaler loss scaling + autocast forward."
         )
-    elif resolved == "bf16" and not info["native_bf16"]:
+    elif resolved == "bf16":
         logger.info(
-            "[HW] bf16 is emulated in software on this GPU. Measured here it "
-            "still beats fp16 on both step time and memory; set "
-            "precision: fp16 to take the tensor-core path instead."
+            "[HW] bf16 path active: fp32 master weights for trainable params "
+            "+ autocast forward%s.",
+            "" if info["native_bf16"] else
+            " (bf16 is emulated in software on this GPU; see the measured "
+            "trade-off against fp16 in ops/hardware/precision.py)",
         )
 
 

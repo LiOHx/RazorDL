@@ -43,28 +43,35 @@ def resolve_precision(requested: str = "auto") -> str:
     ==========================  ========
 
     Emulated bf16 is still warned about once -- it is otherwise invisible -- but
-    it is the *default* on pre-Ampere rather than a fallback, because it
-    measured faster and lighter than the only correct fp16 path:
+    it is the *default* on pre-Ampere rather than a fallback.  Both half
+    precisions now run the same recipe (fp32 master weights + autocast), and
+    measured that way they cost the same; bf16 wins on simplicity, because it
+    needs no loss scaling.
 
-    Measured on an RTX 2080 Ti (sm_75), Qwen3.5-0.8B + LoRA, seq 1024 x batch 2:
+    Measured on an RTX 2080 Ti (sm_75), Qwen3.5-0.8B + LoRA, demo data at
+    max_length 256 x batch 1, 20 steps, fsdp2 (peak = nvidia-smi total used,
+    which includes ~1.4 GB of unrelated allocations):
 
-    ===============================  =========  ===========
-    path                             step time  peak memory
-    ===============================  =========  ===========
-    bf16 (emulated)                    2026 ms    20.16 GiB
-    fp16 (fp32 masters + autocast)     2831 ms    22.96 GiB
-    fp16 params, no masters             fastest   unusable
-    ===============================  =========  ===========
+    =====================================  =========  ===========
+    path                                   step time  peak memory
+    =====================================  =========  ===========
+    bf16 (emulated, fp32 masters+autocast)   0.67 s     7.5 GB
+    fp16 (fp32 masters+autocast+GradScaler)  0.66 s     7.5 GB
+    bf16 params updated in place (old)       0.63 s     5.8 GB
+    fp16 params, no masters                  fastest    unusable
+    =====================================  =========  ===========
 
-    The last row is why fp16 is not simply the fast option on old cards: raw
-    fp16 compute *is* ~40% faster than emulated bf16, but it produces NaN
-    gradients (see :func:`needs_autocast`) and ``GradScaler.unscale_`` refuses
-    fp16 gradients outright, so the only *correct* fp16 configuration carries
-    fp32 master weights whose per-step down-cast eats the tensor-core win.
+    The old in-place bf16 row was cheaper but rounded away every update below
+    ``|w| / 256`` (see :func:`needs_fp32_master_weights`), so it is gone.  The
+    last row is why fp16 is not simply the fast option on old cards: raw fp16
+    compute *is* faster than emulated bf16, but it produces NaN gradients (see
+    :func:`needs_autocast`) and ``GradScaler.unscale_`` refuses fp16 gradients
+    outright.  fp16 additionally skips its first optimizer steps while the
+    scaler finds a scale (two of twenty in this run) and carries scaler state
+    in every checkpoint.
 
-    ``precision: fp16`` remains fully supported and is the right choice when the
-    fp32 master weights fit and you want the tensor cores; it is simply not what
-    ``auto`` picks for you.
+    ``precision: fp16`` remains fully supported; it is simply not what ``auto``
+    picks for you.
     """
     if requested is None:
         requested = "auto"
@@ -78,10 +85,9 @@ def resolve_precision(requested: str = "auto") -> str:
         if not torch.cuda.is_available():
             return "fp32"
         # bf16 on *any* CUDA GPU, native or emulated.  On pre-Ampere the
-        # emulation still beat the only correct fp16 configuration on both axes
-        # (see the measured table above), and bf16's wide exponent needs no loss
-        # scaling, so auto never has to reason about overflow.  Pick fp16
-        # explicitly if you want to trade that away for raw tensor-core speed.
+        # emulation measured on par with fp16 once both carry fp32 masters (see
+        # the table above), and bf16's wide exponent needs no loss scaling, so
+        # auto never has to reason about overflow.
         resolved = "bf16"
     else:
         resolved = requested
@@ -99,8 +105,8 @@ def resolve_precision(requested: str = "auto") -> str:
         logger.warning(
             "[PRECISION] running bf16 on a GPU (%s) with no native bf16 -- "
             "PyTorch emulates it in software, which is slower than a native bf16 "
-            "card. It is still the best-measured configuration here: see the "
-            "trade-off against fp16 in ops/hardware/precision.py.",
+            "card. It measured on par with fp16 here and needs no loss scaling: "
+            "see the trade-off in ops/hardware/precision.py.",
             cap,
         )
 
@@ -149,15 +155,16 @@ def to_storage_dtype(precision: str) -> torch.dtype:
     ==========  ==========  ==========
     precision   storage     compute
     ==========  ==========  ==========
-    bf16        bf16        bf16
+    bf16        **fp32**    bf16
     fp16        **fp32**    fp16
     fp32        fp32        fp32
     ==========  ==========  ==========
 
-    fp16 diverges because the optimizer needs fp32 master weights (see
+    Both half precisions keep fp32 master weights (see
     :func:`needs_fp32_master_weights`); FSDP2's
-    ``MixedPrecisionPolicy(param_dtype=fp16)`` casts the all-gathered copy down
-    for the forward/backward, so the shard stays fp32 without costing speed.
+    ``MixedPrecisionPolicy(param_dtype=...)`` casts the all-gathered copy down
+    for the forward/backward, so the shard stays fp32 without costing speed,
+    and under DDP :func:`needs_autocast` provides the down-cast instead.
 
     Every parameter of a sharded module must share this dtype -- FSDP2 asserts
     ``"FSDP expects uniform original parameter dtype"`` per sharded unit, and a
@@ -175,29 +182,41 @@ def needs_grad_scaler(precision: str) -> bool:
 
 
 def needs_autocast(precision: str) -> bool:
-    """fp16 must run the forward under ``torch.autocast``; bf16 need not.
+    """fp16 and bf16 run the forward under ``torch.autocast``; fp32 does not.
 
-    Blanket casting -- what FSDP2's ``MixedPrecisionPolicy`` does -- puts *every*
-    op in fp16.  That is fine for bf16's wide exponent but not for fp16:
-    measured on Qwen3.5-0.8B, the gated linear-attention recurrence produces
-    NaN gradients from layer 14 downwards with every op in fp16, at *any* loss
-    scale, while the loss itself stays finite.  ``torch.autocast`` keeps the
-    numerically sensitive ops (softmax, norms, reductions) in fp32 and the
-    gradients stay finite -- with the fp16 params in place, so the memory and
-    bandwidth savings are kept.
+    fp16: blanket casting -- what FSDP2's ``MixedPrecisionPolicy`` does -- puts
+    *every* op in fp16.  Measured on Qwen3.5-0.8B, the gated linear-attention
+    recurrence produces NaN gradients from layer 14 downwards with every op in
+    fp16, at *any* loss scale, while the loss itself stays finite.
+    ``torch.autocast`` keeps the numerically sensitive ops (softmax, norms,
+    reductions) in fp32 and the gradients stay finite.
+
+    bf16: the parameters are fp32 master weights (see
+    :func:`needs_fp32_master_weights`), so under DDP -- which has no
+    ``MixedPrecisionPolicy`` -- autocast is what makes the forward compute in
+    bf16 at all; under FSDP2 the policy already casts and autocast only adds
+    the fp32 islands above.
     """
-    return precision == "fp16"
+    return precision in ("fp16", "bf16")
 
 
 def needs_fp32_master_weights(precision: str) -> bool:
-    """fp16 needs fp32 master weights for trainable params.
+    """Half-precision training keeps fp32 master weights for trainable params.
 
-    Without them the optimizer updates fp16 weights directly (updates below
-    fp16 relative precision are rounded away) and ``clip_grad_norm_`` computes
-    the total norm in fp16, silently zeroing every gradient once it overflows
-    65504.  bf16's wider exponent tolerates in-place updates; fp16 does not.
+    fp16: without them the optimizer updates fp16 weights directly and
+    ``clip_grad_norm_`` computes the total norm in fp16, silently zeroing
+    every gradient once it overflows 65504.
+
+    bf16: the exponent range is fine, but bf16 has only 8 mantissa bits
+    (~3 significant digits).  An in-place update ``w -= lr * u`` is rounded
+    away whenever ``|lr * u| < |w| / 256``, which at lr=1e-5..5e-5 is most
+    updates -- the weights stop moving long before the loss plateaus.  Every
+    mixed-precision recipe (Megatron, DeepSpeed, FSDP mixed precision) keeps
+    fp32 masters for bf16 for that reason; RazorDL used to train bf16 in place
+    and only fp16 with masters, so the two precisions did not even agree on
+    what the optimizer state was.
     """
-    return precision == "fp16"
+    return precision in ("fp16", "bf16")
 
 
 def legacy_use_bf16_to_precision(use_bf16: bool) -> str:

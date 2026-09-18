@@ -6,8 +6,8 @@ import torch
 def resolve_storage_dtype(precision: str = "auto", *, trainable: bool = True):
     """Resolve a `precision` config value into the dtype weights are held in.
 
-    Equals the compute dtype except under fp16, where parameters stay fp32 as
-    master weights.  Model loading must use this so every parameter of a
+    fp32 under fp16 and bf16 (master weights), the compute dtype under fp32.
+    Model loading must use this so every parameter of a
     sharded unit shares one dtype (FSDP2 asserts on mixed dtypes).  The
     compute dtype itself comes from ``ops.hardware.precision.to_torch_dtype``.
 

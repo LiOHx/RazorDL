@@ -90,10 +90,10 @@ class FSDP2Backend(ParallelBackend):
         mc = self.model_group_config.model_config
         precision = resolve_precision(mc.precision)
 
-        # Under fp16 the sharded params stay fp32 (see
+        # Under fp16 and bf16 the sharded params stay fp32 (see
         # ParallelModelGroup._cast_params_to_storage_dtype); param_dtype
         # is what FSDP2 casts to for compute, so this is real mixed precision
-        # rather than the no-op it would be if params were already fp16.
+        # rather than the no-op it would be if params were already half.
         # This cast alone is NOT numerically sufficient for fp16 -- the forward
         # additionally runs under torch.autocast (EngineWorkGroup), which pulls
         # the sensitive ops back up to fp32.
@@ -261,16 +261,9 @@ class DDPBackend(ParallelBackend):
             )
 
         # DDP has no MixedPrecisionPolicy, but it does not need one: params stay
-        # fp32 and EngineWorkGroup._autocast_context() gives the forward real
-        # fp16 compute. bf16 under DDP is the one that computes in fp32.
-        from razordl.ops.hardware.precision import resolve_precision
-
-        if resolve_precision(mc.precision) == "bf16" and self.local_rank == 0:
-            logger.warning(
-                "[DDP] precision resolves to bf16 but DDP has no mixed-precision "
-                "casting, so the forward runs in whatever dtype the weights were "
-                "loaded in. Use parallel_backend='fsdp2' for a bf16 policy."
-            )
+        # fp32 master weights under fp16 and bf16, and
+        # EngineWorkGroup._autocast_context() gives the forward real
+        # half-precision compute (ops/hardware/precision.py::needs_autocast).
 
     def wrap_model(self, model):
         self._validate_config()

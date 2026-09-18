@@ -149,12 +149,11 @@ class ParallelModelGroup(BaseModelGroup):
     def _cast_params_to_storage_dtype(self, model):
         """Make every parameter share the precision's storage dtype.
 
-        Storage dtype equals the compute dtype except under fp16, where it is
-        fp32: fp16 master weights lose updates below fp16 relative precision
-        (lr=5e-5 sits right at that boundary) and make ``clip_grad_norm_``
-        compute the total norm in fp16, which silently zeroes every gradient
-        once it overflows 65504.  FSDP2's
-        ``MixedPrecisionPolicy(param_dtype=fp16)`` casts down for compute, so
+        Storage dtype is fp32 under fp16 and bf16 (master weights: half
+        precision loses updates below its relative precision -- 1/2048 for
+        fp16, 1/256 for bf16 -- and fp16 additionally overflows
+        ``clip_grad_norm_``; see ``ops/hardware/precision.py``).  FSDP2's
+        ``MixedPrecisionPolicy(param_dtype=...)`` casts down for compute, so
         the fp32 shard costs memory, not speed.
 
         Within a trainable group the frozen params are promoted too, even

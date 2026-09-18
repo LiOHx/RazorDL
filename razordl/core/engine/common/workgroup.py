@@ -61,12 +61,13 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
         return step_info
 
     def _autocast_context(self):
-        """Autocast the forward/backward when any model group runs fp16.
+        """Autocast the forward/backward when any model group runs fp16 or bf16.
 
         fp16 is only numerically sound under ``torch.autocast``; relying on the
         parallel backend to cast every op down produces NaN gradients at any
-        loss scale (see ``ops/hardware/precision.py::needs_autocast``).  bf16 and
-        fp32 get a no-op context.
+        loss scale.  bf16 holds fp32 master weights, so under DDP autocast is
+        what makes the forward compute in bf16 (see
+        ``ops/hardware/precision.py::needs_autocast``).  fp32 gets a no-op.
 
         Engine-level on purpose: the forward lives in preset code, so this is
         the only layer that can wrap every preset without each of them opting

@@ -86,13 +86,12 @@ def test_dtype_and_policy_mapping():
     assert prec.to_torch_dtype("fp16") is torch.float16
     assert prec.to_torch_dtype("fp32") is torch.float32
 
-    # Only fp16 needs scaling and master weights: bf16 has fp32's exponent range.
+    # Only fp16 needs loss scaling (bf16 has fp32's exponent range), but both
+    # half precisions keep fp32 master weights and run under autocast: bf16's
+    # 8 mantissa bits round away in-place updates below |w| / 256.
     assert [prec.needs_grad_scaler(p) for p in ("bf16", "fp16", "fp32")] == [False, True, False]
-    assert [prec.needs_fp32_master_weights(p) for p in ("bf16", "fp16", "fp32")] == [
-        False,
-        True,
-        False,
-    ]
+    assert [prec.needs_fp32_master_weights(p) for p in ("bf16", "fp16", "fp32")] == [True, True, False]
+    assert [prec.needs_autocast(p) for p in ("bf16", "fp16", "fp32")] == [True, True, False]
 
 
 def test_vllm_dtype_names_track_training_precision():
@@ -216,23 +215,39 @@ def test_fp16_holds_every_param_in_fp32(monkeypatch):
     assert model[1].weight.dtype is torch.float32
 
 
-def test_bf16_keeps_params_at_compute_dtype(monkeypatch):
+def test_bf16_holds_every_param_in_fp32(monkeypatch):
+    """bf16 gets the same fp32 master weights as fp16 (in-place bf16 updates
+    below |w| / 256 are rounded away)."""
     model = _cast_with_precision(monkeypatch, "bf16")
-    assert model[0].weight.dtype is torch.bfloat16
-    assert model[1].weight.dtype is torch.bfloat16
+    assert model[0].weight.dtype is torch.float32
+    assert model[1].weight.dtype is torch.float32
 
 
-def test_frozen_group_stays_at_compute_dtype_under_fp16(monkeypatch):
+def test_bf16_in_place_update_is_lost_below_mantissa_resolution():
+    """Documents *why* bf16 needs master weights: lr * grad below |w| / 256
+    leaves a bf16 weight untouched, while the fp32 master moves."""
+    w_bf16 = torch.full((1024,), 1.0, dtype=torch.bfloat16)
+    w_fp32 = torch.full((1024,), 1.0, dtype=torch.float32)
+    update = 1e-3  # 1/1000 < 1/256
+    w_bf16 -= update
+    w_fp32 -= update
+    assert torch.equal(w_bf16, torch.full((1024,), 1.0, dtype=torch.bfloat16))
+    assert torch.allclose(w_fp32, torch.full((1024,), 1.0 - update))
+
+
+@pytest.mark.parametrize("precision, dtype", [("fp16", torch.float16), ("bf16", torch.bfloat16)])
+def test_frozen_group_stays_at_compute_dtype(monkeypatch, precision, dtype):
     """A reference/teacher group has no optimizer, so no master copy to keep."""
-    model = _cast_with_precision(monkeypatch, "fp16", trainable=False)
-    assert model[0].weight.dtype is torch.float16
-    assert model[1].weight.dtype is torch.float16
+    model = _cast_with_precision(monkeypatch, precision, trainable=False)
+    assert model[0].weight.dtype is dtype
+    assert model[1].weight.dtype is dtype
 
 
-def test_storage_dtype_matches_compute_dtype_except_under_fp16():
+def test_storage_dtype_is_fp32_for_both_half_precisions():
     from razordl.ops.hardware.precision import to_storage_dtype, to_torch_dtype
 
-    assert to_storage_dtype("bf16") is to_torch_dtype("bf16")
     assert to_storage_dtype("fp32") is to_torch_dtype("fp32")
     assert to_storage_dtype("fp16") is torch.float32
+    assert to_storage_dtype("bf16") is torch.float32
     assert to_torch_dtype("fp16") is torch.float16
+    assert to_torch_dtype("bf16") is torch.bfloat16

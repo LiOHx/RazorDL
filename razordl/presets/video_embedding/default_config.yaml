@@ -77,7 +77,7 @@ modules_to_save: null                           # 额外全参数训练的模块
 
 # ---- Infrastructure ----
 parallel_backend: fsdp2                    # 并行后端。fsdp2=省显存, ddp=小模型更快
-precision: auto                          # auto|bf16|fp16|fp32。auto：有 CUDA 一律 bf16(老卡为软件模拟，实测仍快于唯一正确的 fp16 路径)，无卡 fp32
+precision: auto                          # auto|bf16|fp16|fp32。auto：有 CUDA 一律 bf16(老卡为软件模拟，与 fp16 实测持平且无需 loss scaling)，无卡 fp32；半精度均保留 fp32 主权重
 seed: 42                                        # 随机种子
 
 # ---- Custom ----
