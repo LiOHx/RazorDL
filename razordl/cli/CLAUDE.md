@@ -4,15 +4,16 @@ Loaded when working in `razordl/cli/`.
 
 ## Files
 
-- `__init__.py` — auto-discovers presets at startup, builds `--preset` choices dynamically
+- `__init__.py` — builds the argparse tree; `--preset` choices come from `discovery.py`
+- `discovery.py` — `available_presets()` / `default_preset()` by scanning `razordl/presets/` (no heavy imports; shared by `__init__.py` and `train.py`)
 - `init.py` — `razordl init` — generates project files for a `<preset, mode>` combination
-- `train.py` — `razordl train` — dispatches to the preset's `Config` / `WorkGroup` / `Dataset` / `Collator`
+- `train.py` — `razordl train` — runs the project's `src/main.py` when present (custom mode), else the built-in preset resolved from `--preset` → `config.yaml`'s `preset:` key → default
 - `ckpt.py` — `razordl ckpt info <dir>` — inspects `checkpoint_info.json`
 - `diff.py` — `razordl diff` — compares experiment code/config snapshots
 
 ## Hard rules
 
-- **IMPORTANT — No hardcoded preset names anywhere.** `cli/__init__.py` scans `razordl/presets/` at startup; directories starting with `_` are excluded. `--preset` choices + error messages are generated dynamically. Adding a new preset requires zero CLI changes.
+- **IMPORTANT — No hardcoded preset names anywhere.** `cli/discovery.py` scans `razordl/presets/` at startup; directories starting with `_` are excluded. `--preset` choices + error messages are generated dynamically. Adding a new preset requires zero CLI changes.
 - **IMPORTANT — No `if/else` per preset, ever.** Use the CamelCase convention: `CamelCase = "".join(p.capitalize() for p in preset.split("_"))`. Compose class names as `{CamelCase}Config` / `WorkGroup` / `Dataset` / `Collator`; compose module path as `f"razordl.presets.{preset}"`. If you find yourself writing `if preset == "sft": ...`, you are in the wrong layer.
 - **IMPORTANT — Never import preset packages at module level.** Triggers heavy deps (tensordict, vllm) at CLI startup and corrupts `--help`. Use:
   - `importlib.util.spec_from_file_location` to load `_export.py` by file path (in `init.py`).

@@ -9,6 +9,7 @@
 # ============================================================
 
 # ---- Model & Data ----
+preset: new                            # [改] 目录名；razordl train 读取此项选择 preset
 model: Qwen/Qwen3-4B-Instruct          # HF model 名或本地路径
 data_path: ./data                       # train.json / train.jsonl 目录
 outputs_dir: ./outputs               # 实验输出父目录；框架自动生成时间戳子目录

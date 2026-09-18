@@ -15,6 +15,7 @@
 # as teacher.
 
 # ------------------- [common] -------------------
+preset: opd                            # razordl train 读取此项选择 preset（--preset 可覆盖）
 model: Qwen/Qwen3-0.6B
 teacher_model: Qwen/Qwen3-1.7B
 # Optional override; empty string means use the student tokenizer (student and

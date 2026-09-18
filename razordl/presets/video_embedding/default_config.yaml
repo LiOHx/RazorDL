@@ -9,6 +9,7 @@
 # ============================================================
 
 # ---- Model & Data ----
+preset: video_embedding                            # razordl train 读取此项选择 preset（--preset 可覆盖）
 model: OpenSearch-AI/Ops-MM-embedding-v1-2B   # HF multimodal model path
 data_path: ./data                               # train.jsonl + video/ 目录
 outputs_dir: ./outputs               # 实验输出父目录；框架自动生成时间戳子目录

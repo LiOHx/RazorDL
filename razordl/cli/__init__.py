@@ -1,27 +1,16 @@
 import argparse
-import os
 import sys
 
 from razordl.cli.diff import handle_diff
+from razordl.cli.discovery import available_presets, default_preset as _default_preset
 from razordl.cli.init import handle_init
 from razordl.cli.train import handle_train
 from razordl.cli.ckpt import handle_ckpt
 
 
-def _available_presets() -> list[str]:
-    """Auto-discover presets by scanning razordl/presets/."""
-    presets_dir = os.path.join(os.path.dirname(__file__), "..", "presets")
-    if not os.path.isdir(presets_dir):
-        return ["sft"]
-    return sorted(
-        d for d in os.listdir(presets_dir)
-        if os.path.isdir(os.path.join(presets_dir, d)) and not d.startswith("_")
-    )
-
-
 def main():
-    presets = _available_presets()
-    default_preset = "sft" if "sft" in presets else presets[0]
+    presets = available_presets()
+    default_preset = _default_preset(presets)
 
     parser = argparse.ArgumentParser(
         prog="razordl",
@@ -68,9 +57,12 @@ def main():
     )
     train_parser.add_argument(
         "--preset",
-        default=default_preset,
+        default=None,
         choices=presets,
-        help=f"Preset to use for training (available: {', '.join(presets)}; default: {default_preset})",
+        help=(
+            f"Preset to use for training (available: {', '.join(presets)}; "
+            f"default: the `preset:` key of config.yaml, else {default_preset})"
+        ),
     )
 
     # razordl diff

@@ -40,10 +40,42 @@ def _run_simple_mode(config_dir: str, preset: str):
     main(config, workgroup_class, dataset_class, collator_class)
 
 
+def _resolve_preset(args, config_path: str) -> str:
+    """--preset, else the `preset:` key of config.yaml, else the discovered default.
+
+    Defaulting straight to sft made a bare `razordl train` in a simple-mode
+    GRPO project silently train SFT on the GRPO config.
+    """
+    from razordl.cli.discovery import available_presets, default_preset
+
+    preset = getattr(args, "preset", None)
+    if preset:
+        return preset
+    import yaml
+
+    with open(config_path, "r") as f:
+        flat_config = yaml.safe_load(f) or {}
+    preset = flat_config.get("preset")
+    if preset:
+        presets = available_presets()
+        if preset not in presets:
+            logger.error(f"config.yaml names unknown preset '{preset}'. Available: {', '.join(presets)}")
+            raise SystemExit(1)
+        return preset
+    return default_preset()
+
+
+def _find_main_script(config_dir: str) -> str | None:
+    """`src/main.py` (custom mode writes it there), else a legacy `main.py`."""
+    for candidate in (os.path.join(config_dir, "src", "main.py"), os.path.join(config_dir, "main.py")):
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
 def handle_train(args):
     import runpy
 
-    preset = getattr(args, "preset", "sft")
     config_path = os.path.abspath(args.config)
 
     if not os.path.exists(config_path):
@@ -51,17 +83,20 @@ def handle_train(args):
         raise SystemExit(1)
 
     config_dir = os.path.dirname(config_path) or "."
-    main_script = os.path.join(config_dir, "main.py")
+    main_script = _find_main_script(config_dir)
 
     original_cwd = os.getcwd()
     try:
         os.chdir(config_dir)
-        sys.path.insert(0, config_dir)
-
-        if os.path.exists(main_script):
+        if main_script is not None:
+            # The project's own code wins: custom mode edits live in src/.
+            script_dir = os.path.dirname(main_script)
+            sys.path.insert(0, script_dir)
             logger.info(f"Launching training from {main_script}")
-            runpy.run_path("main.py", run_name="__main__")
+            runpy.run_path(main_script, run_name="__main__")
         else:
+            preset = _resolve_preset(args, config_path)
+            sys.path.insert(0, config_dir)
             logger.info(f"Simple mode — using built-in {preset.upper()} training")
             _run_simple_mode(config_dir, preset)
     finally:

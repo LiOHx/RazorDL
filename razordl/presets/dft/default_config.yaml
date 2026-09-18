@@ -10,6 +10,7 @@
 # ============================================================
 
 # ---- Model & Data ----
+preset: dft                            # razordl train 读取此项选择 preset（--preset 可覆盖）
 model: Qwen/Qwen3-4B-Instruct          # HF model 名或本地路径。常用: Qwen3-4B, Llama-3.1-8B
 data_path: ./data                       # train.json / train.jsonl 目录
 outputs_dir: ./outputs               # 实验输出父目录；框架自动生成时间戳子目录

@@ -5,6 +5,7 @@
 # Adjust model / data_path for your setup.
 
 # ------------------- [common] -------------------
+preset: grpo                            # razordl train 读取此项选择 preset（--preset 可覆盖）
 model: Qwen/Qwen3-0.6B
 # Dataset path — populated automatically when the project is generated.
 # If you want to use your own data, point this to your data directory.
