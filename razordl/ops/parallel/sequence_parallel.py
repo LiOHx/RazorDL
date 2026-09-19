@@ -625,7 +625,9 @@ def _sp_attention(q, k, v, scaling, num_key_value_groups=1, chunk_size=2048,
       1. SDPA Flash / Efficient kernels (fastest, head_dim ≤ 256)
       2. xformers memory_efficient_attention (fast, supports larger head_dim)
       3. Chunked attention with online softmax (always works, O(chunk) memory)
-    With padding: SDPA with an explicit causal & padding bool mask, then 3.
+    With padding: SDPA with an explicit causal & padding bool mask, then 3;
+    past ``_SDP_MASK_MAX_SEQ`` tokens the padded path goes straight to 3 so
+    the S x S mask is never materialized.
     """
     if num_key_value_groups > 1:
         k = _repeat_kv(k, num_key_value_groups)
@@ -669,6 +671,15 @@ def _sp_attention(q, k, v, scaling, num_key_value_groups=1, chunk_size=2048,
     return _chunked_causal_attention(q, k, v, scaling, chunk_size)
 
 
+# Sequences longer than this take the chunked kernel in the padded
+# attention path.  The [B, 1, S, S] bool mask is B*S^2 bytes, and SDPA's
+# math fallback materializes float scores from it (4x that again per head),
+# so past ~8K tokens the mask costs more memory than the chunked kernel's
+# extra compute.  Without the proactive route an OOM would fall back anyway,
+# after wasting the allocation attempt.
+_SDP_MASK_MAX_SEQ = 8192
+
+
 def _padded_causal_attention(q, k, v, scaling, key_valid, chunk_size):
     """Causal attention that also masks padded keys.
 
@@ -676,8 +687,12 @@ def _padded_causal_attention(q, k, v, scaling, key_valid, chunk_size):
     their diagonal re-enabled so they attend to themselves: a fully masked
     softmax row is NaN, and ``0 * NaN`` in the next layer's padding multiply
     would poison the valid positions.  Those rows carry no loss anyway.
+    Sequences longer than ``_SDP_MASK_MAX_SEQ`` go straight to the chunked
+    kernel to avoid materializing the S x S mask.
     """
     S = q.shape[2]
+    if S > _SDP_MASK_MAX_SEQ:
+        return _chunked_causal_attention(q, k, v, scaling, chunk_size, key_valid=key_valid)
     causal = torch.ones(S, S, dtype=torch.bool, device=q.device).tril()
     mask = causal[None, None] & key_valid.to(q.device)[:, None, None, :]
     dead_rows = ~mask.any(dim=-1, keepdim=True)

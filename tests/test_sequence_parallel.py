@@ -250,3 +250,37 @@ def test_ulysses_sp_refuses_unpatched_linear_attention(monkeypatch):
     monkeypatch.setattr(sp, "_is_linear_attention", lambda m: False)
     with pytest.raises(RuntimeError, match="linear_attention"):
         sp.apply_ulysses_sp(model, sp_group=object())
+
+
+def test_padded_attention_routes_large_s_to_chunked(monkeypatch):
+    """Past _SDP_MASK_MAX_SEQ the padded path must not materialize the SxS mask."""
+    from razordl.ops.parallel import sequence_parallel as sp
+
+    B, H, S, D = 1, 2, 32, 8
+    torch.manual_seed(0)
+    q = torch.randn(B, H, S, D)
+    k = torch.randn(B, H, S, D)
+    v = torch.randn(B, H, S, D)
+    key_valid = torch.tensor([[0] * 5 + [1] * (S - 5)], dtype=torch.bool)  # 5 left-pad tokens
+
+    orig_chunked = sp._chunked_causal_attention
+    calls = []
+
+    def spy(*args, **kwargs):
+        calls.append(kwargs)
+        return orig_chunked(*args, **kwargs)
+
+    monkeypatch.setattr(sp, "_chunked_causal_attention", spy)
+    monkeypatch.setattr(sp, "_SDP_MASK_MAX_SEQ", 16)
+
+    out_chunked, _ = sp._padded_causal_attention(q, k, v, 1.0, key_valid, chunk_size=8)
+    assert len(calls) == 1, "S=32 > threshold=16 should route to the chunked kernel"
+
+    calls.clear()
+    monkeypatch.setattr(sp, "_SDP_MASK_MAX_SEQ", 10**9)
+    out_sdpa, _ = sp._padded_causal_attention(q, k, v, 1.0, key_valid, chunk_size=8)
+    assert calls == [], "S=32 < huge threshold should use the SDPA path"
+
+    # The two paths agree on valid queries.  Fully-pad queries (positions
+    # 0..4) differ by design: SDPA re-enables the diagonal, chunked returns 0.
+    assert torch.allclose(out_chunked[:, 5:], out_sdpa[:, 5:], atol=1e-4)
