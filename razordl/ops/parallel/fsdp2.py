@@ -360,14 +360,13 @@ def save_fsdp2(
     save_lora_separately: bool = True, 
     save_full_model: bool = True
 ) -> None:
-    """Save a HF model/processor by materializing a full CPU state_dict from FSDP.
+    """Save a HF model by materializing a full CPU state_dict from FSDP.
     
     兼容 FSDP1 (classic) 和 FSDP2 (composable)，支持 LoRA/PEFT 模型。
     所有rank都必须调用此函数（FSDP集体操作要求），但只有rank0写文件。
     
     Args:
         model: FSDP wrapped model (可能是 PEFT 模型)
-        processor: processor or tokenizer to save (自动检测类型)
         save_dir: 保存目录
         save_lora_separately: 如果是 LoRA 模型，是否单独保存 adapter (默认 True)
         save_full_model: 是否保存完整模型 (默认 True)
