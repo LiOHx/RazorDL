@@ -341,7 +341,6 @@ class OPDWorkGroup(_WorkGroup):
                     eos_token_id=processor.eos_token_id,
                 )
 
-            prompt_len = prompt_ids.size(1)
             # Mask from the prompt mask + first EOS, not `!= pad_token_id`:
             # with pad == eos that rule dropped the EOS from response_mask.
             attention_mask, response_mask = hf_generate_masks(

@@ -376,12 +376,12 @@ def save_fsdp2(
     
     Examples:
         # 只保存 LoRA adapter (推荐，节省空间)
-        save_model_and_processor_fsdp2(model, processor, save_dir, 
+        save_fsdp2(model, save_dir, 
                                        save_lora_separately=True, 
                                        save_full_model=False)
         
         # 同时保存 adapter 和完整模型
-        save_model_and_processor_fsdp2(model, processor, save_dir, 
+        save_fsdp2(model, save_dir, 
                                        save_lora_separately=True, 
                                        save_full_model=True)
     """
