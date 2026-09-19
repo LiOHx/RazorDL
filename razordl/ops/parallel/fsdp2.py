@@ -422,7 +422,12 @@ def save_fsdp2(
                 rank = dist.get_rank()
             except Exception:
                 pass
-    
+    if rank < 0:
+        # Standalone single-process save (no Ray context, no RANK env, no
+        # process group): this process IS rank 0.  Without the fallback every
+        # `if rank == 0` gate below skips and the save silently writes nothing.
+        rank = 0
+
     # rank0创建目录
     if rank == 0:
         _os.makedirs(save_dir, exist_ok=True)
