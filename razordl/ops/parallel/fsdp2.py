@@ -404,29 +404,12 @@ def save_fsdp2(
     except Exception:
         pass
 
-    # 确定当前rank
-    rank = -1
-    try:
-        from ray.train import get_context as _get_context
-        rank = _get_context().get_world_rank()
-    except Exception:
-        pass
-    if rank < 0:
-        try:
-            rank = int(os.environ.get("RANK", "-1"))
-        except Exception:
-            pass
-    if rank < 0:
-        if dist.is_available() and dist.is_initialized():
-            try:
-                rank = dist.get_rank()
-            except Exception:
-                pass
-    if rank < 0:
-        # Standalone single-process save (no Ray context, no RANK env, no
-        # process group): this process IS rank 0.  Without the fallback every
-        # `if rank == 0` gate below skips and the save silently writes nothing.
-        rank = 0
+    # Who writes: the SAME source of truth as save_optimizer_fsdp2 and
+    # save_processor_fsdp2 (is_global_rank0).  This function used to probe
+    # Ray context -> RANK env -> dist.get_rank() in its own order, which can
+    # disagree with the other two helpers about who writes when a save runs
+    # under an out-of-framework launcher.
+    rank = 0 if is_global_rank0() else 1
 
     # rank0创建目录
     if rank == 0:
