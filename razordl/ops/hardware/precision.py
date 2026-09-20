@@ -88,11 +88,14 @@ def resolve_precision(requested: str = "auto") -> str:
         #   cuda -> bf16 on ANY CUDA GPU, native or emulated (on pre-Ampere
         #     the emulation measured on par with fp16 once both carry fp32
         #     masters, see the table above, and bf16 needs no loss scaling);
-        #   mps  -> fp16 (MPS has no bf16 acceleration but executes fp16
-        #     natively, see mps.py::supports_fp16);
+        #   mps  -> bf16 when the runtime probe says bf16 executes natively
+        #     (current PyTorch/macOS, measured -- see mps.py), fp16 on older
+        #     builds where only fp16 is native;
         #   else -> fp32.
         available = device.get_available_device()
         if available == "cuda":
+            resolved = "bf16"
+        elif available == "mps" and device._backend("mps").supports_native_bf16():
             resolved = "bf16"
         elif available == "mps" and device._backend("mps").supports_fp16():
             resolved = "fp16"

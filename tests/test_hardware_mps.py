@@ -29,17 +29,27 @@ def test_mps_count_and_id(force_mps):
     assert device.get_device_id() == 0
 
 
-def test_mps_probes(force_mps):
+def test_mps_probes(force_mps, monkeypatch):
+    # bf16 is a runtime probe on the real hardware; pin the cached value so
+    # the assertions are deterministic on any machine.
+    monkeypatch.setattr(mps_backend, "_bf16_supported", True)
     assert mps_backend.supports_fp16() is True
-    assert device.supports_native_bf16() is False
+    assert device.supports_native_bf16() is True
     assert device.supports_flash_attention_2() is False
 
 
-def test_mps_describe(force_mps):
+def test_mps_probes_without_bf16(force_mps, monkeypatch):
+    """Older PyTorch/macOS builds with no bf16 on MPS fall back to fp16."""
+    monkeypatch.setattr(mps_backend, "_bf16_supported", False)
+    assert device.supports_native_bf16() is False
+
+
+def test_mps_describe(force_mps, monkeypatch):
+    monkeypatch.setattr(mps_backend, "_bf16_supported", True)
     info = device.describe()
     assert info["device"] == "mps"
     assert info["count"] == 1
-    assert info["native_bf16"] is False
+    assert info["native_bf16"] is True
     assert info["flash_attention_2"] is False
     assert "memory_gb" in info
 

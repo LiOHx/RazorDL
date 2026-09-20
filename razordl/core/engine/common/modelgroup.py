@@ -224,17 +224,41 @@ class ParallelModelGroup(BaseModelGroup):
         same exponent range as fp32 and needs none.
         """
         from razordl.ops.hardware.precision import needs_grad_scaler, resolve_precision
+        from razordl.ops.hardware import device as hw_device
 
         precision = resolve_precision(self.model_group_config.model_config.precision)
         if not needs_grad_scaler(precision):
             self.scaler = None
             return
 
-        self.scaler = torch.amp.GradScaler("cuda")
+        # Loss scaling guards fp16 against gradient underflow, but the
+        # amplification is two-way: scaled intermediates must stay under the
+        # fp16 ceiling 65504.  CUDA's default init_scale 65536 assumes fp32-
+        # accumulating tensor cores; on MPS, Qwen3.5's hybrid layers run pure
+        # PyTorch reference kernels (causal_conv1d / chunk_gated_delta_rule)
+        # whose fp16 backward intermediates measure ~1000x larger, so 128
+        # overflows reproducibly at step 5 while 32 runs clean (measured on an
+        # M-series Mac, 20-step SFT, 4/4 repro at init_scale=128, zero
+        # overflows at 32).  The scaler's own growth/backoff stays adaptive
+        # from there.
+        device_name = hw_device.get_available_device()
+        if device_name == "cuda":
+            self.scaler = torch.amp.GradScaler(device_name)
+        elif device_name == "mps":
+            self.scaler = torch.amp.GradScaler(device_name, init_scale=32)
+        else:
+            self.scaler = None
+            if self.local_rank == 0:
+                logger.info(
+                    "[%s] fp16 on %s: no accelerator to scale for, GradScaler disabled",
+                    self.model_group_name, device_name,
+                )
+            return
+
         if self.local_rank == 0:
             logger.info(
-                "[%s] fp16: GradScaler enabled (initial scale %.0f)",
-                self.model_group_name,
+                "[%s] fp16: GradScaler enabled on %s (initial scale %.0f)",
+                self.model_group_name, device_name,
                 self.scaler.get_scale(),
             )
 

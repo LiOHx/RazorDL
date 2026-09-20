@@ -79,13 +79,15 @@ def set_seed(seed: int):
 
     Call this before model initialization and at the start of every
     training step.  Uses the same seed across Python, NumPy, and PyTorch
-    (CPU + CUDA).
+    (CPU + CUDA + MPS).
     """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
 
 
 class BaseTrainer():
@@ -351,7 +353,15 @@ class BaseTrainer():
         else:
             tqdm_loader = data_loader
 
-        device = torch.device(f"cuda:{int(os.environ.get('LOCAL_RANK', '0'))}") if torch.cuda.is_available() else torch.device("cpu")
+        from razordl.ops.hardware import device as hw_device
+
+        # Batches follow the model's accelerator via the hardware layer's
+        # single entry point (the local cuda/cpu copy dropped MPS to CPU).
+        accelerator = hw_device.get_available_device()
+        if accelerator == "cuda":
+            device = torch.device(f"cuda:{int(os.environ.get('LOCAL_RANK', '0'))}")
+        else:
+            device = torch.device(accelerator)
 
         for batch_data in tqdm_loader:
             batch_data = self._move_batch_to_device(batch_data, device)

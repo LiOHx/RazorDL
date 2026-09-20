@@ -25,24 +25,29 @@ from razordl.ops.hardware import precision as prec
 
 
 @pytest.mark.parametrize(
-    "available, mps_fp16, expected",
+    "available, mps_bf16, mps_fp16, expected",
     [
-        ("cuda", None, "bf16"),   # any CUDA GPU, native or emulated bf16
-        ("mps", True, "fp16"),    # Apple Silicon executes fp16 natively
-        ("mps", False, "fp32"),   # defensive: MPS without the fp16 probe
-        ("cpu", None, "fp32"),    # no accelerator
+        ("cuda", None, None, "bf16"),     # any CUDA GPU, native or emulated bf16
+        ("mps", True, True, "bf16"),      # current MPS: bf16 runs natively
+        ("mps", False, True, "fp16"),     # older MPS: fp16 executes natively
+        ("mps", False, False, "fp32"),    # defensive: MPS without the fp16 probe
+        ("cpu", None, None, "fp32"),      # no accelerator
     ],
 )
-def test_auto_picks_device_appropriate_dtype(monkeypatch, available, mps_fp16, expected):
+def test_auto_picks_device_appropriate_dtype(monkeypatch, available, mps_bf16, mps_fp16, expected):
     """`auto` keys off the capability probes, not a raw CUDA check: bf16 on
-    any CUDA GPU, fp16 on MPS, fp32 elsewhere."""
+    any CUDA GPU and on MPS when the runtime probe says bf16 is native, fp16
+    on older MPS, fp32 elsewhere."""
     from types import SimpleNamespace
 
     monkeypatch.setattr(prec.device, "get_available_device", lambda: available)
     if available == "mps":
         monkeypatch.setattr(
             prec.device, "_backend",
-            lambda name: SimpleNamespace(supports_fp16=lambda: mps_fp16),
+            lambda name: SimpleNamespace(
+                supports_native_bf16=lambda: mps_bf16,
+                supports_fp16=lambda: mps_fp16,
+            ),
         )
     monkeypatch.setattr(prec, "_warned_emulated_bf16", True)
     assert prec.resolve_precision("auto") == expected
