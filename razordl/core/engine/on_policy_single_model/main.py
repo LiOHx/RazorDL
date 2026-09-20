@@ -23,6 +23,8 @@ def _configure_determinism(config: Config):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
         torch.backends.cuda.matmul.allow_tf32 = False
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     torch.use_deterministic_algorithms(True, warn_only=True)
