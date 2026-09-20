@@ -25,23 +25,25 @@ from razordl.ops.hardware import precision as prec
 
 
 @pytest.mark.parametrize(
-    "capability, cuda, expected",
+    "available, mps_fp16, expected",
     [
-        ((8, 0), True, "bf16"),   # Ampere -- native
-        ((9, 0), True, "bf16"),   # Hopper -- native
-        ((7, 5), True, "bf16"),   # Turing -- emulated, still the better path
-        ((7, 0), True, "bf16"),   # Volta  -- emulated
-        (None, False, "fp32"),    # no accelerator
+        ("cuda", None, "bf16"),   # any CUDA GPU, native or emulated bf16
+        ("mps", True, "fp16"),    # Apple Silicon executes fp16 natively
+        ("mps", False, "fp32"),   # defensive: MPS without the fp16 probe
+        ("cpu", None, "fp32"),    # no accelerator
     ],
 )
-def test_auto_picks_bf16_on_any_cuda(monkeypatch, capability, cuda, expected):
-    """`auto` must never fall back to fp16: fp16 needs fp32 masters + a scaler,
-    which measured slower and heavier than emulated bf16 on sm_75."""
-    monkeypatch.setattr(torch.cuda, "is_available", lambda: cuda)
-    monkeypatch.setattr(
-        prec.device, "supports_native_bf16", lambda: capability is not None and capability >= (8, 0)
-    )
-    monkeypatch.setattr(prec.device, "describe", lambda: {"compute_capability": "sm_75"})
+def test_auto_picks_device_appropriate_dtype(monkeypatch, available, mps_fp16, expected):
+    """`auto` keys off the capability probes, not a raw CUDA check: bf16 on
+    any CUDA GPU, fp16 on MPS, fp32 elsewhere."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(prec.device, "get_available_device", lambda: available)
+    if available == "mps":
+        monkeypatch.setattr(
+            prec.device, "_backend",
+            lambda name: SimpleNamespace(supports_fp16=lambda: mps_fp16),
+        )
     monkeypatch.setattr(prec, "_warned_emulated_bf16", True)
     assert prec.resolve_precision("auto") == expected
 

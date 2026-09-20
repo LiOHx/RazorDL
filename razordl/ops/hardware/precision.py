@@ -82,13 +82,22 @@ def resolve_precision(requested: str = "auto") -> str:
         )
 
     if requested == "auto":
-        if not torch.cuda.is_available():
-            return "fp32"
-        # bf16 on *any* CUDA GPU, native or emulated.  On pre-Ampere the
-        # emulation measured on par with fp16 once both carry fp32 masters (see
-        # the table above), and bf16's wide exponent needs no loss scaling, so
-        # auto never has to reason about overflow.
-        resolved = "bf16"
+        # Half precision where the accelerator executes it, chosen by
+        # capability probe rather than a raw CUDA check (this file is
+        # policy, not capability — see the module docstring):
+        #   cuda -> bf16 on ANY CUDA GPU, native or emulated (on pre-Ampere
+        #     the emulation measured on par with fp16 once both carry fp32
+        #     masters, see the table above, and bf16 needs no loss scaling);
+        #   mps  -> fp16 (MPS has no bf16 acceleration but executes fp16
+        #     natively, see mps.py::supports_fp16);
+        #   else -> fp32.
+        available = device.get_available_device()
+        if available == "cuda":
+            resolved = "bf16"
+        elif available == "mps" and device._backend("mps").supports_fp16():
+            resolved = "fp16"
+        else:
+            resolved = "fp32"
     else:
         resolved = requested
 

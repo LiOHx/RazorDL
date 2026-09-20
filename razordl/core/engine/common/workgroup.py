@@ -78,11 +78,12 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
             resolve_precision,
             to_torch_dtype,
         )
+        from razordl.ops.hardware import device as hw_device
 
         # Resolved once and cached: this runs on every training step.
         if not hasattr(self, "_autocast_dtype"):
             self._autocast_dtype = None
-            if torch.cuda.is_available():
+            if hw_device.get_available_device() != "cpu":
                 for _name, model_group in self.__dict__.items():
                     if not isinstance(model_group, BaseModelGroup):
                         continue
@@ -95,7 +96,7 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
 
         if self._autocast_dtype is None:
             return contextlib.nullcontext()
-        return torch.autocast("cuda", dtype=self._autocast_dtype)
+        return torch.autocast(hw_device.get_available_device(), dtype=self._autocast_dtype)
 
     def _backward_loss(self, loss, model_group: BaseModelGroup):
         """Backward with standard gradient-accumulation scaling."""
