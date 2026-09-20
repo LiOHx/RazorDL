@@ -53,3 +53,15 @@ def test_cpu_path_unchanged(force_cpu):
     assert device.get_device_count() == 0
     with pytest.raises(RuntimeError, match="No GPU accelerator detected"):
         device.check_device_compatibility()
+
+
+def test_attn_fallback_sdpa_on_mps_eager_on_cpu(monkeypatch):
+    """SDPA works on MPS; keep the conservative eager fallback only on CPU."""
+    from razordl.ops.hardware import device as hw_device
+    from razordl.ops.model import huggingface
+
+    monkeypatch.delenv("RAZORDL_DETERMINISTIC", raising=False)
+    monkeypatch.setattr(hw_device, "get_available_device", lambda: "mps")
+    assert huggingface.resolve_attn_implementation() == "sdpa"
+    monkeypatch.setattr(hw_device, "get_available_device", lambda: "cpu")
+    assert huggingface.resolve_attn_implementation() == "eager"

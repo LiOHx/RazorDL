@@ -31,7 +31,7 @@ def resolve_attn_implementation(local_rank: int = 0, logger=None, deterministic_
 
     from razordl.ops.hardware import device
 
-    fallback = "sdpa" if torch.cuda.is_available() else "eager"
+    fallback = "sdpa" if device.get_available_device() in ("cuda", "mps") else "eager"
 
     # flash-attn 2 requires Ampere (sm_80+). It imports fine on Turing/Volta but
     # crashes at forward, so importability alone is not enough of a criterion.
