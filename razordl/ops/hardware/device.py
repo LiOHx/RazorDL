@@ -1,7 +1,10 @@
 """Generic device detection interface.
 
 Delegates to backend-specific modules (cuda, mps, xpu, rocm...).
-Adding a new hardware backend only requires a new module + a line here.
+Adding a new hardware backend only requires a new module + entries here.
+This file is a PURE dispatcher: per-device knowledge (counts, probes,
+describe fields) lives only in the backend file — see this directory's
+CLAUDE.md hard rule.
 """
 
 import importlib
@@ -23,7 +26,7 @@ def get_available_device() -> str:
     """Return the best available device type: 'cuda', 'mps', or 'cpu'."""
     if _backend("cuda").is_available():
         return "cuda"
-    if torch.backends.mps.is_available():
+    if _backend("mps").is_available():
         return "mps"
     return "cpu"
 
@@ -51,7 +54,7 @@ def get_device_count() -> int:
     if device == "cuda":
         return _backend("cuda").get_device_count()
     if device == "mps":
-        return 1  # Apple Silicon has at most 1 GPU per process
+        return _backend("mps").get_device_count()
     return 0
 
 
@@ -60,8 +63,9 @@ def supports_native_bf16() -> bool:
     device = get_available_device()
     if device == "cuda":
         return _backend("cuda").supports_native_bf16()
-    # MPS has no bf16 tensor cores; CPU bf16 is emulated on most x86.
-    return False
+    if device == "mps":
+        return _backend("mps").supports_native_bf16()
+    return False  # CPU bf16 is emulated on most x86
 
 
 def supports_flash_attention_2() -> bool:
@@ -69,6 +73,8 @@ def supports_flash_attention_2() -> bool:
     device = get_available_device()
     if device == "cuda":
         return _backend("cuda").supports_flash_attention_2()
+    if device == "mps":
+        return _backend("mps").supports_flash_attention_2()
     return False
 
 
@@ -77,10 +83,12 @@ def describe() -> dict:
     device = get_available_device()
     if device == "cuda":
         return _backend("cuda").describe()
+    if device == "mps":
+        return _backend("mps").describe()
     return {
-        "device": device,
+        "device": "cpu",
         "name": None,
-        "count": get_device_count(),
+        "count": 0,
         "compute_capability": None,
         "memory_gb": 0.0,
         "native_bf16": False,
@@ -89,20 +97,14 @@ def describe() -> dict:
 
 
 def check_device_compatibility() -> None:
-    """Raise RuntimeError with guidance if the accelerator is not usable.
-
-    Checks CUDA first (most common), then MPS.  Extend here when adding
-    new backends (XPU, ROCm, etc.).
-    """
+    """Raise RuntimeError with guidance if the accelerator is not usable."""
     device = get_available_device()
     if device == "cuda":
         _backend("cuda").check_compatibility()
         return
     if device == "mps":
-        # MPS is available; nothing extra to check for now
+        _backend("mps").check_compatibility()
         return
-    # CPU fallback -- training will fail later with a clearer error,
-    # but we can warn here if desired.
     index_url = _backend("cuda").get_recommended_torch_index()
     raise RuntimeError(
         "No GPU accelerator detected (CUDA or MPS).\n"
