@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from razordl.core.engine.common.flat_config import build_single_model_config_dict
@@ -152,3 +153,30 @@ def test_fsdp2_generation_context_unshards_peft_root():
 
     with backend.generation_context(_DdpUnwrapped()):
         pass
+
+
+def test_fsdp2_backend_rejects_non_cuda(monkeypatch):
+    """FSDP2's DTensor stack is CUDA-only; off CUDA the failure must be a
+    clear config error, not the raw AttributeError from init_device_mesh."""
+    from razordl.ops.hardware import device as hw_device
+
+    backend = FSDP2Backend.__new__(FSDP2Backend)
+    for fake in ("mps", "cpu"):
+        monkeypatch.setattr(hw_device, "get_available_device", lambda dev=fake: dev)
+        with pytest.raises(RuntimeError, match="requires CUDA"):
+            backend.wrap_model(object())
+
+
+def test_ray_worker_plan_is_device_aware(monkeypatch):
+    from razordl.core.engine.common import main as engine_main
+    from razordl.ops.hardware import device as hw_device
+
+    monkeypatch.setattr(hw_device, "get_available_device", lambda: "cuda")
+    monkeypatch.setattr(hw_device, "get_device_count", lambda: 8)
+    assert engine_main._ray_worker_plan() == (8, True)
+
+    monkeypatch.setattr(hw_device, "get_available_device", lambda: "mps")
+    assert engine_main._ray_worker_plan() == (1, False)
+
+    monkeypatch.setattr(hw_device, "get_available_device", lambda: "cpu")
+    assert engine_main._ray_worker_plan() == (0, False)

@@ -88,6 +88,14 @@ class FSDP2Backend(ParallelBackend):
     name = "fsdp2"
 
     def wrap_model(self, model):
+        from razordl.ops.hardware import device as hw_device
+
+        if hw_device.get_available_device() != "cuda":
+            raise RuntimeError(
+                "parallel_backend='fsdp2' requires CUDA: FSDP2's DTensor/DeviceMesh "
+                f"has no {hw_device.get_available_device()!r} support. On Apple Silicon "
+                "set parallel_backend: ddp in config.yaml."
+            )
         from torch.distributed.fsdp import MixedPrecisionPolicy
         from razordl.ops.parallel.fsdp2 import create_device_mesh
 

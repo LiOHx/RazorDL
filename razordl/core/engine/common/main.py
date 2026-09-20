@@ -28,6 +28,26 @@ from razordl.ops.snapshot import (
 )
 
 
+def _ray_worker_plan() -> tuple[int, bool]:
+    """(num_workers, use_gpu) for the TorchTrainer scaling config, device-aware.
+
+    cuda -> one worker per GPU; mps -> a single worker (Apple Silicon has one
+    GPU); cpu -> 0 workers, which makes Ray run the train loop in the driver
+    process (verified working on a CPU-only Mac).
+
+    Resolved through the device MODULE (not direct imports) so tests and
+    callers observe the same monkeypatched dispatcher.
+    """
+    from razordl.ops.hardware import device as hw_device
+
+    accelerator = hw_device.get_available_device()
+    if accelerator == "cuda":
+        return hw_device.get_device_count(), True
+    if accelerator == "mps":
+        return 1, False
+    return 0, False
+
+
 def _log_hardware_capabilities(config, logger) -> None:
     """Log detected accelerator capabilities and the precision they resolve to.
 
@@ -272,8 +292,10 @@ def main(
         ray.init(**OmegaConf.to_container(ray_init_kwargs))
 
     try:
-        num_gpus = torch.cuda.device_count()
-        print(f"num_gpus: {num_gpus}")
+        from razordl.ops.hardware import device as hw_device
+
+        num_workers, use_gpu = _ray_worker_plan()
+        print(f"accelerator: {hw_device.get_available_device()}, ray workers: {num_workers}")
         train_loop = partial(
             train_loop_per_worker,
             workgroup_class=workgroup_class,
@@ -285,7 +307,7 @@ def main(
         trainer = TorchTrainer(
             train_loop_per_worker=train_loop,
             train_loop_config=config,
-            scaling_config=ScalingConfig(num_workers=num_gpus, use_gpu=(num_gpus > 0)),
+            scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         )
         result = trainer.fit()
         print("Final metrics:", result.metrics)
