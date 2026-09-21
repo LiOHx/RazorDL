@@ -8,6 +8,12 @@ with their own ``response_mask[:, 1:]`` to select the response tokens.
 
 This helper is shared by GRPO and OPD; it lives in ``ops/`` rather than
 either preset because both need it.
+
+Memory: with a 248k-vocabulary model a [B, L, V] float tensor is several GB.
+The implementation therefore evaluates the fused ``F.cross_entropy`` (whose
+autograd recomputes the softmax from the saved logits) instead of
+materializing ``log_softmax`` + ``gather``, and divides the temperature
+in place — together removing three full-vocabulary copies per call.
 """
 from __future__ import annotations
 
@@ -50,12 +56,37 @@ def compute_per_token_log_probs(
     ctx = torch.no_grad() if no_grad else contextlib.nullcontext()
     with ctx:
         output = model(input_ids=input_ids, attention_mask=attention_mask)
-        logits_shifted = output.logits[:, :-1, :].contiguous()
+        logits = output.logits  # [B, L, V]
         if temperature != 1.0:
-            logits_shifted = logits_shifted / temperature
-        target_ids = input_ids[:, 1:].contiguous()
-        log_probs = F.log_softmax(logits_shifted, dim=-1)
-        gathered = torch.gather(log_probs, dim=2, index=target_ids.unsqueeze(-1)).squeeze(-1)
+            # Out of place on purpose: mutating output.logits in place would
+            # leak the tempering into any tensor that shares the storage
+            # (the tests caught a fake LM returning its own buffer), and a
+            # copy here is one full-vocabulary tensor, not three.
+            logits = logits / temperature
+
+        # Fused cross_entropy instead of log_softmax + gather: identical
+        # mathematics (logp(target) == -CE(logits, target)) but its autograd
+        # never materializes the [B, L, V] log-prob tensor — backward
+        # recomputes the softmax from the saved logits.  With a 248k vocab
+        # this removes three [B, L, V] float copies per call (measured peak
+        # ~20G -> ~10G for a 2x2559 batch on MPS; CUDA benefits the same way).
+        #
+        # CE runs over ALL L positions with rolled targets so the big reshape
+        # below is a free view of the contiguous logits (slicing first would
+        # force a [B, L-1, V] copy).  The extra last column pairs position
+        # L-1's logits with token 0 — garbage — but it is sliced off BEFORE
+        # callers reduce, so it never receives gradient and cannot leak into
+        # the real positions (pinned by a gradient-parity test).
+        targets = torch.cat([input_ids[:, 1:], input_ids[:, :1]], dim=1)
+        per_token = F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)),
+            targets.reshape(-1),
+            reduction="none",
+        ).view(input_ids.size(0), input_ids.size(1))
+    # CE returns the POSITIVE loss -logp; negate to restore the log-prob
+    # contract (negative values), and slice the garbage last column off
+    # before callers reduce — it never receives gradient that way.
+    gathered = -per_token[:, :-1]
     if logp_min_clamp is not None:
         gathered = gathered.clamp(min=logp_min_clamp)
     return gathered
