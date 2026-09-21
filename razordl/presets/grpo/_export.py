@@ -29,6 +29,7 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     helper_names = [
         "vllm_max_lora_rank",
         "_sync_lora_weights",
+        "_iter_merged_full_weights",
         "_sync_full_weights",
         "asdict_peft",
         "_extract_rewards",

@@ -197,12 +197,17 @@ def _sync_lora_weights(model_group, engine):
 
 
 def _iter_merged_full_weights(raw_model):
-    """Merged weights under plain HF key names (no ``base_model.model.``
-    prefix, no ``lora_*`` matrices) for a full-model sync into vllm-metal."""
+    """Merged weights under plain HF key names for a full-model sync into
+    vllm-metal.  PeftModel.state_dict() names every LoRA-targeted module
+    through its wrapper (``q_proj.base_layer.weight``) and prefixes
+    everything with ``base_model.model.`` -- BOTH must be stripped, or the
+    engine's HF-named loader silently keeps its initial weights for exactly
+    the trained layers (adversarial-review finding, reproduced locally)."""
     for name, tensor in raw_model.state_dict().items():
         if "lora_" in name:
             continue
-        yield name.replace("base_model.model.", ""), tensor
+        hf_name = name.replace("base_model.model.", "").replace(".base_layer.", ".")
+        yield hf_name, tensor
 
 
 def _sync_full_weights(model_group, engine):
