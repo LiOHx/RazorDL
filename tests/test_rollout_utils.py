@@ -145,6 +145,6 @@ def test_grpo_prompt_never_contains_the_assistant_turn(qwen_tokenizer):
     text = qwen_tokenizer.decode(out["prompt_ids"])
     assert "SECRET" not in text
     assert out["answer"] == "5"
-    assert text.endswith(_generation_suffix(qwen_tokenizer))
+    assert text.endswith(_generation_suffix(qwen_tokenizer, enable_thinking=True))
     old_format = GRPODataset._tokenize_prompt(stub, {"messages": item["messages"]})
     assert old_format["answer"] == "SECRET"
