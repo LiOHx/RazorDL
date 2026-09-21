@@ -188,10 +188,18 @@ class GRPOVLLMRollout:
         ic = inference_config.to_dict()
         if _is_vllm_metal_backend():
             # vllm-metal (Apple Silicon, MLX models): the external_launcher
-            # backend crashes on a single machine without RANK, and the 0.6
-            # default GPU-memory ratio leaves too little KV cache.
+            # backend crashes on a single machine without RANK; sleep mode is
+            # rejected by its ModelConfig validation; the 16k default
+            # max_num_batched_tokens peaks at 14.7G during the profile run;
+            # LoRA has no V1 request path, so adapters travel merged into the
+            # synced weights instead (see _sync_lora_weights).  The caller's
+            # memory fraction is respected -- on metal it is the
+            # max-working-set share and the training process needs the rest.
             ic.pop("distributed_executor_backend", None)
-            ic["gpu_memory_utilization"] = max(ic["gpu_memory_utilization"], 0.9)
+            ic["enable_sleep_mode"] = False
+            ic["max_num_batched_tokens"] = min(ic["max_num_batched_tokens"], 2048)
+            ic["enable_lora"] = False
+            self.use_lora = False
         self.engine = LLM(**ic)
         self.tokenizer = self.engine.get_tokenizer()
         self.tokenizer.padding_side = "left"

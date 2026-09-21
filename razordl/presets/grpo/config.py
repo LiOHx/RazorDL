@@ -17,6 +17,10 @@ class GRPODataConfig(_DataConfig):
     temperature: float = 0.7
     top_p: float = 0.7
     top_k: int = 50
+    # Within-step loss chunk size, in samples; 0 = historical default (chunk
+    # by prompt batch).  Independent of grad_accum, which accumulates across
+    # physical steps.
+    loss_micro_batch_size: int = 0
 
 
 @dataclass
@@ -41,6 +45,7 @@ class GRPOConfig(_Config):
             "temperature": d.get("temperature", 0.7),
             "top_p": d.get("top_p", 0.7),
             "top_k": d.get("top_k", 50),
+            "loss_micro_batch_size": d.get("loss_micro_batch_size", 0),
         }
         config_dict = build_single_model_config_dict(
             d,

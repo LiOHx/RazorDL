@@ -94,7 +94,15 @@ class GRPODataset(Dataset):
         # Prepend system prompt to guide output format
         messages = [{"role": "system", "content": GRPO_SYSTEM_PROMPT}] + messages
 
-        prompt_ids = truncate_chat_prompt(self.processor, messages, self.max_length)
+        # Qwen3.5's template otherwise pre-fills an EMPTY <think> block: the
+        # response never contains </think>, the format gate zeroes every
+        # reward, advantage is identically 0 and GRPO gets no gradient
+        # signal at all.  enable_thinking=True leaves the block open so the
+        # model writes reasoning and closes it itself.  No-op on templates
+        # that are thinking-on by default (Qwen3).
+        prompt_ids = truncate_chat_prompt(
+            self.processor, messages, self.max_length, enable_thinking=True
+        )
 
         return {
             "prompt_ids": prompt_ids,

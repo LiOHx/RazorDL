@@ -172,15 +172,37 @@ def vllm_max_lora_rank(lora_rank: int) -> int:
 
 def _sync_lora_weights(model_group, engine):
     """Extract LoRA params through the active parallel backend → vLLM."""
+    from razordl.ops.model.vllm_rollout import _is_vllm_metal_backend
+
     model = model_group.model
     raw_model = model.module if hasattr(model, "module") else model
     peft_config = getattr(raw_model, "peft_config", {}).get("default", None)
     if peft_config is None:
         return
+    if _is_vllm_metal_backend():
+        # vllm-metal has no V1 LoRA-request path: merge the adapter into the
+        # base, push merged weights under plain HF keys through the verified
+        # full-sync path, then unmerge to restore training state (adapter
+        # gradients keep flowing afterwards).
+        raw_model.merge_adapter()
+        try:
+            engine.update_weights(_iter_merged_full_weights(raw_model))
+        finally:
+            raw_model.unmerge_adapter()
+        return
     engine.update_weights(
         model_group.iter_vllm_weights(lora_only=True),
         peft_config=asdict_peft(peft_config),
     )
+
+
+def _iter_merged_full_weights(raw_model):
+    """Merged weights under plain HF key names (no ``base_model.model.``
+    prefix, no ``lora_*`` matrices) for a full-model sync into vllm-metal."""
+    for name, tensor in raw_model.state_dict().items():
+        if "lora_" in name:
+            continue
+        yield name.replace("base_model.model.", ""), tensor
 
 
 def _sync_full_weights(model_group, engine):
@@ -226,6 +248,7 @@ class GRPOWorkGroup(_WorkGroup):
         self.top_p = getattr(config.data_config, "top_p", 0.7)
         self.top_k = getattr(config.data_config, "top_k", 50)
         self.clip_eps = getattr(config.data_config, "clip_eps", 0.2)
+        self.loss_micro_batch_size = getattr(config.data_config, "loss_micro_batch_size", 0)
         self._last_advantage_info = {}
         self._last_loss_info = {}
 
@@ -234,12 +257,21 @@ class GRPOWorkGroup(_WorkGroup):
         policy_config.worker_group_config.model_group_config.model_group_name = "policy_model_group"
         self.policy_model_group = GRPOPolicyModelGroup(policy_config)
 
-        ref_config = copy.deepcopy(config)
-        ref_config.worker_group_config.model_group_config.model_group_name = "reference_model_group"
-        ref_config.worker_group_config.model_group_config.model_config.is_trainable = False
-        ref_config.worker_group_config.model_group_config.model_config.adapter_config.use_adapter = False
-        ref_config.worker_group_config.model_group_config.optimizer_config.learning_rate = 0.0
-        self.reference_model_group = GRPOReferenceModelGroup(ref_config)
+        if config.worker_group_config.model_group_config.model_config.adapter_config.use_adapter:
+            # LoRA: the reference is the frozen adapter-less base, numerically
+            # identical to the policy's own base weights -- a separate frozen
+            # copy just burns a full model's memory.  The loss computes ref
+            # log-probs through policy.disable_adapter() instead.  Full
+            # fine-tuning still gets a real reference model (its weights
+            # drift away from the policy's base).
+            self.reference_model_group = None
+        else:
+            ref_config = copy.deepcopy(config)
+            ref_config.worker_group_config.model_group_config.model_group_name = "reference_model_group"
+            ref_config.worker_group_config.model_group_config.model_config.is_trainable = False
+            ref_config.worker_group_config.model_group_config.model_config.adapter_config.use_adapter = False
+            ref_config.worker_group_config.model_group_config.optimizer_config.learning_rate = 0.0
+            self.reference_model_group = GRPOReferenceModelGroup(ref_config)
 
     # ------------------------------------------------------------------
     # Rollout
@@ -402,10 +434,23 @@ class GRPOWorkGroup(_WorkGroup):
             temperature=self.temperature,
         )
         old_log_probs = policy_log_probs.detach()
-        ref_log_probs = compute_per_token_log_probs(
-            self.reference_model_group.model, input_ids, attention_mask,
-            temperature=self.temperature, no_grad=True,
-        )
+        if self.reference_model_group is not None:
+            ref_log_probs = compute_per_token_log_probs(
+                self.reference_model_group.model, input_ids, attention_mask,
+                temperature=self.temperature, no_grad=True,
+            )
+        else:
+            # LoRA reference = the policy base with the adapter disabled
+            # (peft's own context manager, same approach as TRL).  The
+            # forward still goes through the wrapped model so DDP hooks
+            # stay intact.
+            policy_raw = self.policy_model_group.model
+            policy_raw = policy_raw.module if hasattr(policy_raw, "module") else policy_raw
+            with policy_raw.disable_adapter():
+                ref_log_probs = compute_per_token_log_probs(
+                    self.policy_model_group.model, input_ids, attention_mask,
+                    temperature=self.temperature, no_grad=True,
+                )
 
         log_ratio = policy_log_probs - old_log_probs
         ratio = torch.exp(log_ratio)
@@ -484,7 +529,13 @@ class GRPOWorkGroup(_WorkGroup):
 
         # Chunked loss computation.
         total_samples = rollout_output["input_ids"].size(0)
-        mini_batch_size = input_dict["prompt_ids"].size(0)
+        # 0 = historical behaviour (chunk = prompt batch).  grad_accum
+        # accumulates across physical steps; this is the within-step knob.
+        mini_batch_size = (
+            self.loss_micro_batch_size
+            if self.loss_micro_batch_size > 0
+            else input_dict["prompt_ids"].size(0)
+        )
 
         total_pg_loss_sum = 0.0
         total_kl_sum = 0.0

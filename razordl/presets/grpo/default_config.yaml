@@ -15,6 +15,7 @@ outputs_dir: ./outputs               # 实验输出父目录；框架自动生�
 # GRPO-specific
 batch_size: 2
 group_size: 8
+loss_micro_batch_size: 0    # GRPO loss 步内 micro-batch 条数。0=历史默认(按 prompt batch 切块);>0 降激活峰值(实测 =1 时 11G->7.3G)
 kl_coef: 0.001
 clip_eps: 0.2
 max_completion_length: 2048
