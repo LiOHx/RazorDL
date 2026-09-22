@@ -417,6 +417,39 @@ class BaseTrainer():
             torch.distributed.barrier()
         self.save_model_and_processor(checkpoint_dir)
 
+        # Hand the final metrics to Ray so the driver's `result.metrics`
+        # (and metrics_dataframe) carry them instead of None.  Every worker
+        # must call report -- it is a collective; the per-step all_gather +
+        # _summarize_step_info mean all workers already hold identical
+        # JSON-serializable numbers, and a zero-step run reports the initial
+        # {}.  Ray 2.55 only surfaces metrics that arrive WITH A CHECKPOINT
+        # in Result.metrics (verified by repro), so attach a marker-only
+        # checkpoint -- NOT the model: RazorDL has its own atomic
+        # checkpointing.  Metrics are flattened with "/" separators (Ray's
+        # own nested-metrics convention).
+        from ray import train as ray_train
+        from ray.train import Checkpoint
+
+        import tempfile
+
+        def _flatten(d, prefix=""):
+            out = {}
+            for k, v in d.items():
+                key = f"{prefix}/{k}" if prefix else str(k)
+                if isinstance(v, dict):
+                    out.update(_flatten(v, key))
+                else:
+                    out[key] = v
+            return out
+
+        with tempfile.TemporaryDirectory() as _ckpt_dir:
+            with open(os.path.join(_ckpt_dir, "final_metrics.json"), "w") as _f:
+                _f.write(json.dumps(self._last_step_info, ensure_ascii=False))
+            ray_train.report(
+                _flatten(self._last_step_info),
+                checkpoint=Checkpoint.from_directory(_ckpt_dir),
+            )
+
 
     def _move_batch_to_device(self, batch_data, device):
         """Move all tensors in a batch to the target device (recursively)."""
