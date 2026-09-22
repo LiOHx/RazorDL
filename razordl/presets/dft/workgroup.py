@@ -35,20 +35,23 @@ class DistDFTLoss(torch.nn.Module):
             ignore_index=self.ignore_index,
             reduction="none",
         )
+        return self.reduce_per_token_ce(ce_loss, labels)
 
+    def reduce_per_token_ce(self, ce_per_token, labels):
+        """Same math as forward() with the per-token CE precomputed (e.g.
+        from FusedLinearCrossEntropy, which streams the SFT/DFT loss path)."""
         # The weight is a stop-gradient term (DFT: -sum sg(p) log p).  Without
         # detach the gradient is exp(-ce) * (1 - ce) * d(ce), which flips sign
         # for every token with ce > 1 and pushes low-confidence tokens further
         # away instead of towards the target.
-        p_target = torch.exp(-ce_loss).detach()
+        p_target = torch.exp(-ce_per_token).detach()
         p_target = torch.clamp(p_target, min=self.mini_scale)
 
         valid_mask = (labels != self.ignore_index).float()
         valid_tokens = valid_mask.sum().item()
         denominator = global_token_denominator(valid_tokens)
 
-        loss = (ce_loss * p_target).sum() / max(denominator, 1)
-        return loss
+        return (ce_per_token * p_target).sum() / max(denominator, 1)
 
 
 class DFTWorkGroup(SFTWorkGroup):
@@ -64,4 +67,3 @@ class DFTWorkGroup(SFTWorkGroup):
         dc = config.data_config
         mini_scale = getattr(dc, "dft_mini_scale", 0.0)
         self.criterion = DistDFTLoss(ignore_index=-100, mini_scale=mini_scale)
-        self.chunked_loss = False  # DFT uses full loss for confidence weights

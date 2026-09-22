@@ -1,12 +1,10 @@
-import types
-
 import torch
-import torch.utils.checkpoint
 from tensordict.tensordict import TensorDict
 
 from razordl.core.base import logging
 from razordl.core.engine.single_model.workgroup import ModelGroup as _ModelGroup, WorkGroup
-from razordl.ops.loss.distributed import DistCrossEntropyLoss, global_token_denominator
+from razordl.ops.loss.distributed import DistCrossEntropyLoss
+from razordl.ops.loss.fused_linear_ce import fused_linear_cross_entropy
 from razordl.ops.model.huggingface import build_causal_lm, build_left_padding_tokenizer
 
 logger = logging.getLogger(__name__)
@@ -32,7 +30,15 @@ class SFTModelGroup(_ModelGroup):
 
 
 class SFTWorkGroup(WorkGroup):
-    """SFT preset: standard CausalLM model plus default next-token CE loss."""
+    """SFT preset: standard CausalLM model plus default next-token CE loss.
+
+    The loss streams through FusedLinearCrossEntropy (see
+    razordl/ops/loss/fused_linear_ce.py): the forward runs with
+    ``logits_to_keep=1`` so the [B, L, V] logits are never materialized,
+    and presets that need a different per-token loss (DFT's confidence
+    weighting) only swap ``self.criterion`` -- the reduction contract is
+    ``criterion.reduce_per_token_ce(ce_per_token, labels)``.
+    """
 
     model_group_class = SFTModelGroup
 
@@ -41,9 +47,8 @@ class SFTWorkGroup(WorkGroup):
         self.model_group = self.model_group_class(config)
         mc = config.worker_group_config.model_group_config.model_config
         self.sp_size = getattr(mc, "sp_size", 1)
+        self.fused_linear_tile_size = getattr(mc, "fused_linear_tile_size", 2048)
         self.criterion = DistCrossEntropyLoss(ignore_index=-100)
-        self.chunked_loss = getattr(mc, "chunked_loss", False)
-        self.chunk_size = getattr(mc, "chunk_size", 2048)
 
     def update_step(self, input_dict: TensorDict, step: int) -> dict:
         if self.sp_size > 1:
@@ -61,7 +66,7 @@ class SFTWorkGroup(WorkGroup):
         model = self.model_group.model
 
         # split_for_sp hands back labels already shifted to next-token
-        # targets (see its docstring); only the non-SP path shifts here.
+        # targets (see its docstring); only the non-SP path rolls here.
         loss = self._compute_loss(model, input_dict, labels, shifted=self.sp_size > 1)
         raw_loss = loss.detach()
         self._backward_loss(loss, self.model_group)
@@ -69,106 +74,32 @@ class SFTWorkGroup(WorkGroup):
 
     def _compute_loss(self, model, input_dict, labels, shifted: bool = False):
         """``shifted`` means *labels* already hold next-token targets aligned
-        with the unshifted logits (the SP split does this); otherwise the
-        usual ``logits[:, :-1]`` / ``labels[:, 1:]`` shift is applied here."""
-        if self.chunked_loss:
-            return self._chunked_loss_compute(model, input_dict, labels, shifted)
-        return self._simple_loss_compute(model, input_dict, labels, shifted)
-
-    def _simple_loss_compute(self, model, input_dict, labels, shifted: bool = False):
-        output = model(**input_dict)
-        logits = output.logits
-        if not shifted:
-            logits, labels = logits[:, :-1, :], labels[:, 1:]
-        return self.criterion(
-            logits.reshape(-1, logits.size(-1)),
-            labels.reshape(-1),
-        )
-
-    def _chunked_loss_compute(self, model, input_dict, labels, shifted: bool = False):
-        """Monkey-patch forward to skip lm_head, then compute loss in chunks."""
-        lm_head = model.lm_head
-        text_model = self._find_text_model(model)
+        with the unshifted hidden states (the SP split does this); otherwise
+        the targets are rolled here and the garbage column is sliced off
+        before the reduction (gradient-free, pinned by per_token_logp's
+        gradient-parity test)."""
         softcap = getattr(model.config, "final_logit_softcapping", None)
-        chunk_size = self.chunk_size
-        original_forward = model.forward
+        output = model(
+            **input_dict,
+            output_hidden_states=True,
+            logits_to_keep=1,
+        )
+        hidden = output.hidden_states[-1]              # [B, L, D], post final norm
+        raw_model = model.module if hasattr(model, "module") else model
+        weight = raw_model.get_output_embeddings().weight
 
-        def _chunked_forward(
-            self_m,
-            input_ids=None,
-            attention_mask=None,
-            position_ids=None,
-            labels=None,
-            **kwargs,
-        ):
-            kwargs.pop("logits_to_keep", None)
-            outputs = text_model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                **kwargs,
+        if shifted:
+            ce = fused_linear_cross_entropy(
+                hidden, weight, labels, self.fused_linear_tile_size,
+                softcap=softcap, ignore_index=-100,
             )
-            hidden_states = outputs.last_hidden_state
-
-            loss = None
-            if labels is not None:
-                if shifted:
-                    hs, target = hidden_states, labels
-                else:
-                    hs = hidden_states[:, :-1, :].contiguous()
-                    target = labels[:, 1:].contiguous()
-                seq_len = hs.shape[1]
-                total_loss = torch.zeros(1, device=hs.device, dtype=torch.float32)
-
-                for start in range(0, seq_len, chunk_size):
-                    end = min(start + chunk_size, seq_len)
-                    c_hs = hs[:, start:end, :]
-                    c_tgt = target[:, start:end].reshape(-1)
-
-                    def _chunk_fn(h, t):
-                        logits = lm_head(h)
-                        if softcap is not None:
-                            logits = logits / softcap
-                            logits = torch.tanh(logits) * softcap
-                        return torch.nn.functional.cross_entropy(
-                            logits.reshape(-1, logits.size(-1)).float(),
-                            t,
-                            ignore_index=-100,
-                            reduction="sum",
-                        ).unsqueeze(0)
-
-                    ce = torch.utils.checkpoint.checkpoint(
-                        _chunk_fn,
-                        c_hs,
-                        c_tgt,
-                        use_reentrant=False,
-                    )
-                    total_loss = total_loss + ce.squeeze(0)
-
-                valid_local = (target != -100).sum().item()
-                denominator = global_token_denominator(valid_local)
-                loss = total_loss / max(denominator, 1)
-
-            from transformers.modeling_outputs import CausalLMOutputWithPast
-
-            return CausalLMOutputWithPast(loss=loss, logits=None)
-
-        model.forward = types.MethodType(_chunked_forward, model)
-        try:
-            input_dict["labels"] = labels
-            output = model(**input_dict)
-            return output.loss
-        finally:
-            model.forward = original_forward
-
-    @staticmethod
-    def _find_text_model(model):
-        t = model
-        for attr in ("model", "model", "language_model"):
-            nxt = getattr(t, attr, None)
-            if nxt is None:
-                continue
-            if not hasattr(nxt, "lm_head"):
-                return nxt
-            t = nxt
-        return t
+            target_labels = labels
+        else:
+            rolled = torch.cat([labels[:, 1:], labels[:, :1]], dim=1)
+            nll = fused_linear_cross_entropy(
+                hidden, weight, rolled, self.fused_linear_tile_size,
+                softcap=softcap, ignore_index=-100,
+            )
+            ce = nll[:, :-1]
+            target_labels = labels[:, 1:]
+        return self.criterion.reduce_per_token_ce(ce, target_labels)

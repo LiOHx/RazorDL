@@ -36,7 +36,7 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     # The extracted class carries SFT's own docstring; the generated file
     # is not an SFT preset (presets/CLAUDE.md: strip SFT-specific docstrings).
     base_wg_cls = replace_class_docstring(
-        base_wg_cls, "Base LM workgroup: SP split, next-token CE, chunked loss."
+        base_wg_cls, "Base LM workgroup: SP split, streaming next-token CE."
     )
     loss_cls = extract_class(new_src, "DistNEWLoss")  # [改] your loss class
 
@@ -72,7 +72,6 @@ def export_workgroup(preset_pkg_dir: str) -> str:
         dc = config.data_config
         new_param = getattr(dc, "new_param", 0.0)  # [改]
         self.criterion = DistNEWLoss(ignore_index=-100, new_param=new_param)
-        self.chunked_loss = False
 """
     return "\n".join([header, loss_cls + "\n\n", model_cls + "\n\n", base_wg_cls + "\n\n", wg_cls])
 

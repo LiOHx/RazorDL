@@ -37,18 +37,26 @@ class DistNEWLoss(torch.nn.Module):
         ce_loss = F.cross_entropy(
             logits.float(), labels, ignore_index=self.ignore_index, reduction="none"
         )
+        return self.reduce_per_token_ce(ce_loss, labels)
+
+    def reduce_per_token_ce(self, ce_per_token: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """[改] 流式 loss 路径的归约入口：SFTWorkGroup._compute_loss 经
+        FusedLinearCrossEntropy（不物化完整 logits）逐 token 调用它。
+        与 forward 同数学；forward 保留给完整 logits 场景和既有测试。"""
         valid_tokens = (labels != self.ignore_index).sum().item()
         denominator = global_token_denominator(valid_tokens)
-        return ce_loss.sum() / max(denominator, 1)
+        return ce_per_token.sum() / max(denominator, 1)
 
 
 # [改] 定义你的 WorkGroup
 class NEWWorkGroup(SFTWorkGroup):
     """Your WorkGroup — override __init__ to set self.criterion and any extra config.
 
-    Inherits update_step, _compute_loss, _simple_loss_compute, _chunked_loss_compute
-    from SFTWorkGroup.  Those methods use self.criterion internally, so changing
-    self.criterion is usually all you need.
+    Inherits update_step and the streaming _compute_loss from SFTWorkGroup;
+    the loss path never materializes the full logits (FusedLinearCrossEntropy)
+    and calls ``self.criterion.reduce_per_token_ce(ce_per_token, labels)`` --
+    so changing self.criterion is usually all you need, as long as the new
+    loss implements that method (DistNEWLoss below shows the contract).
     """
 
     def __init__(self, config):
@@ -56,4 +64,3 @@ class NEWWorkGroup(SFTWorkGroup):
         dc = config.data_config
         new_param = getattr(dc, "new_param", 0.0)  # [改] 你的特有配置（见 config.py）
         self.criterion = DistNEWLoss(ignore_index=-100, new_param=new_param)
-        self.chunked_loss = False  # 如果你的 loss 需要完整 logits
