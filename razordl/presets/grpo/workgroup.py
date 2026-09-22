@@ -254,6 +254,10 @@ class GRPOWorkGroup(_WorkGroup):
         self.top_k = getattr(config.data_config, "top_k", 50)
         self.clip_eps = getattr(config.data_config, "clip_eps", 0.2)
         self.loss_micro_batch_size = getattr(config.data_config, "loss_micro_batch_size", 0)
+        self.fused_linear_tile_size = getattr(
+            config.worker_group_config.model_group_config.model_config,
+            "fused_linear_tile_size", 1024,
+        )
         self._last_advantage_info = {}
         self._last_loss_info = {}
 
@@ -437,12 +441,14 @@ class GRPOWorkGroup(_WorkGroup):
         policy_log_probs = compute_per_token_log_probs(
             self.policy_model_group.model, input_ids, attention_mask,
             temperature=self.temperature,
+            tile_size=self.fused_linear_tile_size,
         )
         old_log_probs = policy_log_probs.detach()
         if self.reference_model_group is not None:
             ref_log_probs = compute_per_token_log_probs(
                 self.reference_model_group.model, input_ids, attention_mask,
                 temperature=self.temperature, no_grad=True,
+                tile_size=self.fused_linear_tile_size,
             )
         else:
             # LoRA reference = the policy base with the adapter disabled
@@ -455,6 +461,7 @@ class GRPOWorkGroup(_WorkGroup):
                 ref_log_probs = compute_per_token_log_probs(
                     self.policy_model_group.model, input_ids, attention_mask,
                     temperature=self.temperature, no_grad=True,
+                    tile_size=self.fused_linear_tile_size,
                 )
 
         log_ratio = policy_log_probs - old_log_probs

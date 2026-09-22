@@ -99,8 +99,9 @@ class BaseModelConfig(DictSerializable):
     precision: str = "auto"     # "auto" | "bf16" | "fp16" | "fp32"; auto picks from GPU capability
     use_bf16: bool | None = None  # DEPRECATED, mapped onto `precision` by flat_config
     parallel_backend: str = "fsdp2"  # "fsdp2" | "ddp"
-    chunked_loss: bool = False  # compute loss in chunks to avoid giant logits tensor
-    chunk_size: int = 2048      # tokens per chunk when chunked_loss=True
+    fused_linear_tile_size: int = 2048  # sequence tiles for the streaming lm_head CE
+                                        # (FusedLinearCrossEntropy); >= seq_len degenerates
+                                        # to a single pass
     is_trainable: bool = True   # False = frozen model, no optimizer (e.g. GRPO reference, OPD teacher)
     adapter_config: BaseAdapterConfig = field(default_factory=BaseAdapterConfig)
 

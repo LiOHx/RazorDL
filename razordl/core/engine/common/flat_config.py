@@ -131,8 +131,17 @@ def build_single_model_config_dict(
 
     precision = _resolve_precision_key(d)
     parallel_backend = d.get("parallel_backend", "fsdp2")
-    chunked_loss = d.get("chunked_loss", False)
-    chunk_size = d.get("chunk_size", 2048)
+    fused_linear_tile_size = d.get("fused_linear_tile_size", d.get("chunk_size", 2048))
+    if "chunk_size" in d or "chunked_loss" in d:
+        import warnings
+        warnings.warn(
+            "'chunked_loss'/'chunk_size' retired: the lm_head CE always streams "
+            "through FusedLinearCrossEntropy now.  Use "
+            f"'fused_linear_tile_size' (mapped chunk_size={fused_linear_tile_size} "
+            "for this run); the 'chunked_loss' flag is a no-op.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     ray_kwargs = d.get("ray_kwargs", {})
 
     model_group_name = d.get("model_group_name", None)
@@ -158,8 +167,7 @@ def build_single_model_config_dict(
                     "sp_size": sp_size,
                     "precision": precision,
                     "parallel_backend": parallel_backend,
-                    "chunked_loss": chunked_loss,
-                    "chunk_size": chunk_size,
+                    "fused_linear_tile_size": fused_linear_tile_size,
                     "_is_offload_param": offload_param,
                     "_is_offload_optimizer": offload_optimizer,
                     "adapter_config": {

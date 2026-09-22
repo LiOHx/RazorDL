@@ -34,6 +34,7 @@ def compute_per_token_log_probs(
     temperature: float = 1.0,
     logp_min_clamp: float | None = None,
     no_grad: bool = False,
+    tile_size: int | None = None,
 ) -> torch.Tensor:
     """Forward *model* and return next-token log-probabilities.
 
@@ -56,6 +57,9 @@ def compute_per_token_log_probs(
             policies assigns near-zero probability.
         no_grad: When True, wrap the forward in ``torch.no_grad()``.  Used for
             reference / teacher forwards.
+        tile_size: sequence tiles for the streaming CE; defaults to the
+            module constant (callers with a config pass
+            ``model_config.fused_linear_tile_size`` explicitly).
 
     Returns:
         ``[B, L-1]`` tensor of log-probs aligned with ``input_ids[:, 1:]``.
@@ -79,7 +83,9 @@ def compute_per_token_log_probs(
         # positions (pinned by a gradient-parity test).
         targets = torch.cat([input_ids[:, 1:], input_ids[:, :1]], dim=1)
         nll = fused_linear_cross_entropy(
-            hidden, weight, targets, _TILE_SIZE, temperature=temperature
+            hidden, weight, targets,
+            _TILE_SIZE if tile_size is None else tile_size,
+            temperature=temperature,
         )
     gathered = -nll[:, :-1]
     if logp_min_clamp is not None:

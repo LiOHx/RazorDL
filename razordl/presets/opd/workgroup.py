@@ -254,6 +254,10 @@ class OPDWorkGroup(_WorkGroup):
         self.loss_max_clamp = float(dc.loss_max_clamp)
         self.logp_min_clamp = float(dc.log_prob_min_clamp)
         self.temperature = float(dc.temperature)
+        self.fused_linear_tile_size = getattr(
+            config.worker_group_config.model_group_config.model_config,
+            "fused_linear_tile_size", 1024,
+        )
         self.top_p = float(dc.top_p)
         self.top_k = int(dc.top_k)
         self._last_metrics = {}
@@ -401,6 +405,7 @@ class OPDWorkGroup(_WorkGroup):
             temperature=self.temperature,
             logp_min_clamp=self.logp_min_clamp,
             no_grad=False,
+            tile_size=self.fused_linear_tile_size,
         )
         log_ratio = log_probs - old_log_probs
         ratio = log_ratio.exp()
@@ -441,6 +446,7 @@ class OPDWorkGroup(_WorkGroup):
                 temperature=self.temperature,
                 logp_min_clamp=self.logp_min_clamp,
                 no_grad=True,
+                tile_size=self.fused_linear_tile_size,
             )
         rollout_output["old_log_probs"] = old_log_probs
 
@@ -453,6 +459,7 @@ class OPDWorkGroup(_WorkGroup):
                 temperature=self.temperature,
                 logp_min_clamp=self.logp_min_clamp,
                 no_grad=True,
+                tile_size=self.fused_linear_tile_size,
             )
         distill_loss = kl_penalty(old_log_probs, teacher_log_probs, self.loss_mode)
         distill_loss = distill_loss.clamp(-self.loss_max_clamp, self.loss_max_clamp)

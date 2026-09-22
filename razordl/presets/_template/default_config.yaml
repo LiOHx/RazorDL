@@ -48,7 +48,7 @@ new_param: 0.0                          # [改] 描述你的特有配置
 enable_gradient_checkpointing: false    # 梯度检查点
 # enable_activation_offload: false      # 激活异步offload。true=长序列省显存（>32K开启），对小模型/短序列反致OOM
 sp_size: 1                              # 序列并行。1=关, 2/4/8=开
-# chunked_loss 如果你的 loss 需要完整 logits 则强制 false
+# loss 默认流式(FusedLinearCrossEntropy); 自定义 loss 需实现 reduce_per_token_ce
 lazy_tokenize: false
 dataset_processor_path: ""
 num_workers: 2
