@@ -57,7 +57,9 @@ class DistStats(Reducible):
 
     @classmethod
     def from_tensor(cls, t) -> "DistStats":
-        t = t.detach().double()
+        # .cpu() first: MPS does not support float64; numerically identical
+        # for CUDA/CPU since the f64 casts happen on the same fp32 values.
+        t = t.detach().cpu().double()
         if t.numel() == 0:
             return cls.empty()
         return cls(
