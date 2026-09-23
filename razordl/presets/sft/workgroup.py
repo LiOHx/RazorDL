@@ -78,6 +78,22 @@ class SFTWorkGroup(WorkGroup):
         the targets are rolled here and the garbage column is sliced off
         before the reduction (gradient-free, pinned by per_token_logp's
         gradient-parity test)."""
+        if not hasattr(self.criterion, "reduce_per_token_ce"):
+            # Backward compatibility: criteria written against the old
+            # contract (forward(logits, labels), e.g. custom presets from
+            # before the streaming switch) keep working via the exact
+            # pre-streaming simple path -- full logits materialized, no
+            # softcap, matching the old _simple_loss_compute semantics.
+            output = model(**input_dict)
+            logits = output.logits
+            if shifted:
+                return self.criterion(
+                    logits.reshape(-1, logits.size(-1)), labels.reshape(-1)
+                )
+            return self.criterion(
+                logits[:, :-1].reshape(-1, logits.size(-1)), labels[:, 1:].reshape(-1)
+            )
+
         softcap = getattr(model.config, "final_logit_softcapping", None)
         output = model(
             **input_dict,

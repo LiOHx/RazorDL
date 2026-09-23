@@ -134,3 +134,25 @@ def test_losses_backward_through_operator():
     assert fake.head.weight.grad is not None
     assert fake.emb.weight.grad is not None
     assert torch.isfinite(fake.head.weight.grad).all()
+
+
+def test_legacy_criterion_without_reduce_per_token_ce_falls_back():
+    """Criteria from before the streaming contract (forward(logits, labels),
+    e.g. custom presets written against the old SFT) keep working through the
+    exact pre-streaming simple path instead of crashing."""
+    class PlainCriterion(torch.nn.Module):
+        def forward(self, logits, labels):
+            return torch.nn.functional.cross_entropy(
+                logits.float(), labels, ignore_index=-100
+            )
+
+    fake = _FakeLM(5)
+    ids, labels = _batch(seed=5)
+    wg = _stub_workgroup(PlainCriterion())
+    actual = wg._compute_loss(
+        fake, {"input_ids": ids, "attention_mask": torch.ones_like(ids)}, labels
+    )
+    expected = PlainCriterion()(
+        fake(ids).logits[:, :-1].reshape(-1, 29), labels[:, 1:].reshape(-1)
+    )
+    assert torch.allclose(actual, expected, rtol=1e-5, atol=1e-6)
