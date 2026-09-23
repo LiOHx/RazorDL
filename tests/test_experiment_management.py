@@ -253,3 +253,22 @@ def test_legacy_project_does_not_diff_against_its_own_snapshot(tmp_path):
     report = diff_experiments(str(project), str(exp), "left", "right")
     assert "文件: 无变更" in report
     assert "配置变更" not in report
+
+
+def test_key_rename_does_not_change_code_hash(tmp_path):
+    """A pure config key rename (chunk_size -> fused_linear_tile_size at the
+    same value) must not break auto-resume via the code hash."""
+    from razordl.ops.snapshot import compute_code_hash
+
+    (tmp_path / "src.py").write_text("x = 1\n")
+    (tmp_path / "config.yaml").write_text("model: m\nchunk_size: 2048\n")
+    h_old = compute_code_hash(str(tmp_path))
+
+    (tmp_path / "config.yaml").write_text("model: m\nfused_linear_tile_size: 2048\n")
+    h_new = compute_code_hash(str(tmp_path))
+
+    (tmp_path / "config.yaml").write_text("model: m\nfused_linear_tile_size: 4096\n")
+    h_diff = compute_code_hash(str(tmp_path))
+
+    assert h_old == h_new, "pure key rename changed the code hash"
+    assert h_old != h_diff, "value change must still change the hash"

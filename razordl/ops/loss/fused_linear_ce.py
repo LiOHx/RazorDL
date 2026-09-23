@@ -125,6 +125,13 @@ def fused_linear_cross_entropy(
         hidden = hidden / temperature
     if ignore_index is None:
         ignore_index = -100
+    if tile_size <= 0:
+        # A negative step makes the tile loops no-ops: forward would return
+        # UNINITIALIZED nll (garbage loss) and backward zero gradients, with
+        # no exception -- the adversarial review reproduced exactly that
+        # silent-corruption shape.  Reject it loudly at the single choke
+        # point every call site flows through.
+        raise ValueError(f"tile_size must be a positive integer, got {tile_size}")
     return FusedLinearCrossEntropy.apply(
         hidden, weight, target, int(tile_size), softcap, ignore_index
     )

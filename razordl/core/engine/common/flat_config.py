@@ -131,17 +131,33 @@ def build_single_model_config_dict(
 
     precision = _resolve_precision_key(d)
     parallel_backend = d.get("parallel_backend", "fsdp2")
-    fused_linear_tile_size = d.get("fused_linear_tile_size", d.get("chunk_size", 2048))
+    _raw_tile = d.get("fused_linear_tile_size", d.get("chunk_size", 2048))
+    if isinstance(_raw_tile, float) and not _raw_tile.is_integer():
+        raise ValueError(f"fused_linear_tile_size must be an integer, got {_raw_tile!r}")
+    try:
+        fused_linear_tile_size = int(_raw_tile)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"fused_linear_tile_size must be an integer, got {_raw_tile!r}"
+        ) from None
+    if fused_linear_tile_size <= 0:
+        raise ValueError(f"fused_linear_tile_size must be positive, got {fused_linear_tile_size}")
     if "chunk_size" in d or "chunked_loss" in d:
         import warnings
-        warnings.warn(
+        from razordl.core.base import logging as _base_logging
+        _msg = (
             "'chunked_loss'/'chunk_size' retired: the lm_head CE always streams "
             "through FusedLinearCrossEntropy now.  Use "
             f"'fused_linear_tile_size' (mapped chunk_size={fused_linear_tile_size} "
-            "for this run); the 'chunked_loss' flag is a no-op.",
-            DeprecationWarning,
-            stacklevel=2,
+            "for this run); the 'chunked_loss' flag is a no-op."
         )
+        warnings.warn(_msg, DeprecationWarning, stacklevel=2)
+        # ALSO log it: warnings.warn with stacklevel=2 attributes the warning
+        # to the preset's config module, which CPython's default filter hides
+        # from non-__main__ modules -- under a real `razordl train` the
+        # warnings.warn alone was INVISIBLE (adversarial-review finding), so
+        # old configs silently remapped instead of failing loudly.
+        _base_logging.getLogger(__name__).warning(f"[DEPRECATED CONFIG] {_msg}")
     ray_kwargs = d.get("ray_kwargs", {})
 
     model_group_name = d.get("model_group_name", None)

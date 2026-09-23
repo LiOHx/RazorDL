@@ -129,3 +129,13 @@ def test_full_logits_are_never_materialized():
     # CE's internal softmax, ~256 MiB each); materializing the full
     # [2, 512, 250k] logits would need well over 3 GiB before gradients.
     assert peak_gib < 1.5, f"logits were materialized (peak {peak_gib:.2f} GiB)"
+
+
+@pytest.mark.parametrize("bad_tile", [0, -1])
+def test_nonpositive_tile_size_rejected_loudly(bad_tile):
+    """The adversarial review reproduced silent corruption with tile_size<0:
+    empty tile loops -> uninitialized nll (garbage loss) and zero gradients,
+    no exception.  The wrapper must reject it loudly."""
+    hidden, weight, target = _case()
+    with pytest.raises(ValueError, match="tile_size"):
+        fused_linear_cross_entropy(hidden, weight, target, bad_tile)

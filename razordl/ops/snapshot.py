@@ -16,6 +16,24 @@ INCLUDE_SUFFIXES = {".py", ".yaml", ".yml", ".sh", ".json", ".jsonl", ".md"}
 # Config keys set by the framework (not user-configurable).  Stripped when
 # hashing and diffing YAML files so snapshot-injected values like output_dir
 # do not cause false differences.
+# Retired flat config keys: pure renames must not change the code hash or
+# show up as config diffs (a key rename alone used to break auto-resume with
+# a misleading "Project code changed" -- adversarial-review finding).
+_RENAMED_FLAT_KEYS = {"chunk_size": "fused_linear_tile_size"}
+_RETIRED_FLAT_KEYS = {"chunked_loss"}
+
+
+def _normalize_legacy_flat_keys(data: dict) -> dict:
+    """Rename/drop retired flat config keys so semantically identical configs
+    hash and diff equal across a pure key rename."""
+    for old, new in _RENAMED_FLAT_KEYS.items():
+        if old in data and new not in data:
+            data[new] = data.pop(old)
+    for retired in _RETIRED_FLAT_KEYS:
+        data.pop(retired, None)
+    return data
+
+
 INTERNAL_CONFIG_KEYS = {"output_dir", "resume_checkpoint_dir"}
 
 TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$")
@@ -62,11 +80,37 @@ def compute_code_hash(project_dir: str, exclude_paths=()) -> str:
                 continue
             try:
                 with open(fpath, "rb") as f:
-                    h.update(rel.encode("utf-8") + b"\x00")
-                    h.update(f.read())
+                    raw = f.read()
+                # YAML files: normalize retired flat keys so a pure key rename
+                # does not change the hash (and break auto-resume) for
+                # semantically identical configs.
+                if fname.endswith((".yaml", ".yml")):
+                    raw = _normalize_yaml_for_hash(raw)
+                h.update(rel.encode("utf-8") + b"\x00")
+                h.update(raw)
             except OSError:
                 continue
     return h.hexdigest()
+
+
+def _normalize_yaml_for_hash(raw: bytes) -> bytes:
+    """Canonically re-serialize a dict YAML file (sorted keys, retired flat
+    keys renamed/dropped) so semantically identical files hash equal
+    regardless of original formatting or key spelling.  Both sides of a
+    rename must pass through the SAME canonical form -- the first version
+    only re-dumped files containing legacy keys, so the renamed file's raw
+    bytes never matched the normalized legacy bytes."""
+    try:
+        import yaml
+
+        data = yaml.safe_load(raw)
+    except Exception:
+        return raw
+    if not isinstance(data, dict):
+        return raw
+    data = _normalize_legacy_flat_keys(dict(data))
+    return yaml.dump(data, default_flow_style=False, allow_unicode=True,
+                     sort_keys=True).encode("utf-8")
 
 
 def compute_config_hash(config_path: str) -> str:
@@ -242,6 +286,7 @@ def _normalize_config_for_diff(data: dict) -> dict:
     data = dict(data)
     if "outputs_dir" not in data and "output_dir" in data:
         data["outputs_dir"] = data["output_dir"]
+    data = _normalize_legacy_flat_keys(data)
     for k in INTERNAL_CONFIG_KEYS:
         data.pop(k, None)
     return data

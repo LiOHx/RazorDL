@@ -442,12 +442,21 @@ class BaseTrainer():
                     out[key] = v
             return out
 
-        with tempfile.TemporaryDirectory() as _ckpt_dir:
-            with open(os.path.join(_ckpt_dir, "final_metrics.json"), "w") as _f:
-                _f.write(json.dumps(self._last_step_info, ensure_ascii=False))
-            ray_train.report(
-                _flatten(self._last_step_info),
-                checkpoint=Checkpoint.from_directory(_ckpt_dir),
+        try:
+            with tempfile.TemporaryDirectory() as _ckpt_dir:
+                with open(os.path.join(_ckpt_dir, "final_metrics.json"), "w") as _f:
+                    _f.write(json.dumps(self._last_step_info, ensure_ascii=False))
+                ray_train.report(
+                    _flatten(self._last_step_info),
+                    checkpoint=Checkpoint.from_directory(_ckpt_dir),
+                )
+        except Exception:
+            # Metrics are best-effort: a report failure (exotic step_info
+            # value, Ray storage misconfig) must NOT flip a completed,
+            # checkpointed run to ERRORED (adversarial-review finding).
+            logger.exception(
+                "[TRAINER] final metrics report to Ray failed -- training "
+                "itself completed; result.metrics will be None"
             )
 
 
