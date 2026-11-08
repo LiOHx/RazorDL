@@ -13,10 +13,10 @@ Baseline (verified 2026-11-09):
 
 After P0–P3 changes:
 
-- `pytest` → 205 passed, 1 skipped (includes 3 integration smoke tests)
-- `pytest -m "not integration"` → 202 passed, 1 skipped
+- `pytest` → 210 passed, 1 skipped (includes 3 integration smoke tests)
+- `pytest -m "not integration"` → 207 passed, 1 skipped
 - `pytest -m integration` → 3 passed
-- CPU-only (`CUDA_VISIBLE_DEVICES="" pytest`) → 199 passed, 7 skipped
+- CPU-only (`CUDA_VISIBLE_DEVICES="" pytest`) → 204 passed, 7 skipped
 - `ruff check .` and `pre-commit run --all-files` pass
 - `scripts/smoke_fsdp2_sp.py` is syntax-checked but not executed on this box
   (1 CUDA GPU; it requires 2)
@@ -87,10 +87,13 @@ Acceptance:
       - `worker_group_name` removed from default configs; field kept with a
         “reserved” comment for future multi-model work.
       - `micro_batch_size_per_gpu` remains because video_embedding reads it.
-- [ ] **Add a config-consumption test** (static): every key in a preset's
+- [x] **Add default-config parse coverage** for every preset
+      (`tests/test_default_configs.py`), including presets whose `__init__.py`
+      needs optional heavy dependencies.
+- [ ] **Full static config-consumption audit**: every key in a preset's
       `default_config.yaml` must be consumed by `flat_config.py` or the
       preset, or be explicitly marked deprecated. Regression tests for the
-      known dead keys are in place, but the full static audit is still TODO.
+      known dead keys are in place, but the full audit is still TODO.
 
 Acceptance:
 
