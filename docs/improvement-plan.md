@@ -1,7 +1,7 @@
 # RazorDL improvement plan
 
-Status: P0–P3 mostly implemented (performance benchmarks and a release tag
-remain); P2 still has the optional vLLM smoke.
+Status: P0–P3 mostly implemented (remaining: SP/DataLoader performance probes
+and a release tag); P2 still has the optional vLLM smoke.
 
 Baseline (verified 2026-11-09):
 
