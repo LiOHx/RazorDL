@@ -81,8 +81,9 @@ ruff check .
 `pytest` runs the CPU test suite; GPU-only tests skip automatically when no
 CUDA device is present.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and
-[docs/multi-node.md](docs/multi-node.md) for multi-node Ray training.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow,
+[docs/multi-node.md](docs/multi-node.md) for multi-node Ray training, and
+[docs/performance.md](docs/performance.md) for manual performance probes.
 
 ---
 

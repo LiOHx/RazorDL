@@ -18,6 +18,7 @@ pre-1.0; APIs may change between minor releases.
 - `streaming: true` JSONL dataset option (byte-offset index, tokenize on
   demand) for SFT/DFT.
 - Multi-node Ray documentation and cluster-GPU worker planning.
+- Fused linear CE tile-size benchmark script and performance notes.
 
 ### Fixed
 

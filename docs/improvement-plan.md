@@ -158,9 +158,11 @@ Acceptance:
       workers instead of only the driver's local count.
 - [x] **Add `CONTRIBUTING.md` / `CHANGELOG.md`**:
       release tagging is still pending (requires a maintainer decision).
-- [ ] **Optional performance pass**: benchmark fused CE tile sizes, SP
-      attention chunk size, and dataloader workers; publish a small table in
-      `docs/`.
+- [x] **Fused CE tile-size benchmark**:
+      `scripts/benchmark_fused_linear_ce.py` and `docs/performance.md`
+      (sample table from an RTX 2080 Ti).
+- [ ] **Remaining performance probes**: SP attention chunk size, DataLoader
+      workers, and end-to-end step time for real SFT/GRPO configs.
 
 ---
 
