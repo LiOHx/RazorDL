@@ -51,9 +51,16 @@ class SFTDataset(Dataset):
             "lazy_tokenize",
             False,
         )
+        self.cache_tokenized = getattr(
+            config.worker_group_config.model_group_config.processor_config,
+            "cache_tokenized",
+            True,
+        )
 
-        model_path = config.worker_group_config.model_group_config.model_config.model_path
-        self.processor = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+        from razordl.ops.model.huggingface import resolve_processor_path
+
+        self._processor_path = resolve_processor_path(config)
+        self.processor = AutoTokenizer.from_pretrained(self._processor_path, trust_remote_code=True)
         self.processor.padding_side = "left"
         if self.processor.pad_token is None:
             self.processor.pad_token = self.processor.eos_token
@@ -185,9 +192,10 @@ class SFTDataset(Dataset):
         if not data_files:
             return None
 
+        from razordl.ops.model.huggingface import resolve_processor_path
+
         hasher = hashlib.sha256()
-        model_path = self.config.worker_group_config.model_group_config.model_config.model_path
-        hasher.update(model_path.encode())
+        hasher.update(resolve_processor_path(self.config).encode())
         hasher.update(str(self.max_length).encode())
         hasher.update(str(getattr(self.tokenizer, "chat_template", None) or "").encode())
         hasher.update(self._format_item_signature().encode())
@@ -207,6 +215,8 @@ class SFTDataset(Dataset):
 
     def _cache_path(self) -> str | None:
         """Return the cache file path, or None if caching is not applicable."""
+        if not getattr(self, "cache_tokenized", True):
+            return None
         h = self._cache_hash()
         if h is None:
             return None

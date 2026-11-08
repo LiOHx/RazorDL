@@ -51,6 +51,7 @@ enable_gradient_checkpointing: false    # 梯度检查点。true=省显存但慢
 sp_size: 1                              # 序列并行。常用: 1(关), 2, 4, 8（必须整除 attention_heads）
 # loss 经 FusedLinearCrossEntropy 流式计算; 置信度权重消费逐 token CE, 无需完整 logits
 lazy_tokenize: false                    # true=实时 tokenize（省内存但慢）。false=默认离线预处理
+cache_tokenized: true                   # false=不读写 tokenized cache（只读/敏感数据目录）
 dataset_processor_path: ""              # tokenizer 路径（和 model 不同时才填）
 num_workers: 2                          # DataLoader worker 数。常用: 0~8
 
@@ -76,12 +77,9 @@ precision: auto                          # auto|bf16|fp16|fp32。auto：有 CUDA
 seed: 42                                # 随机种子
 
 # ---- Custom ----
-optimizer_path: null                    # 自定义优化器类路径。null=默认 AdamW
-scheduler_path: null                    # 自定义 scheduler 类路径。null=无
 resume_checkpoint_dir: null             # 手动指定恢复 checkpoint。null=auto_resume 自动找
 ray_kwargs: {}                          # ray.init() 额外参数。常用: {} 或 {"address": "auto"}
 compute_checksums: false                # 保存 checkpoint 时计算每个模型文件的 SHA256（增加 IO，可选完整性校验）
 
 # ---- Multi-Model (单模型不用管) ----
 model_group_name: null                  # 多模型训练时命名
-worker_group_name: null                 # 多模型训练时命名

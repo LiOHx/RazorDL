@@ -152,9 +152,10 @@ class VideoEmbeddingDataset(Dataset):
         self.total_len = len(self.dataset)
 
         # Processor
-        model_path = config.worker_group_config.model_group_config.model_config.model_path
+        from razordl.ops.model.huggingface import resolve_processor_path
+
         self.dataset_processor = AutoProcessor.from_pretrained(
-            model_path, trust_remote_code=True
+            resolve_processor_path(config), trust_remote_code=True
         )
         self.dataset_processor.tokenizer.padding_side = "left"
 

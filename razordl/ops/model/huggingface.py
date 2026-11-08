@@ -1,6 +1,25 @@
 import os
 
-import torch
+
+def resolve_processor_path(config) -> str:
+    """Return the tokenizer/processor path shared by dataset and model group.
+
+    ``flat_config`` folds ``dataset_processor_path`` into
+    ``processor_config.processor_path`` so both sides load the same tokenizer.
+    The data-config fallback keeps manually constructed configs working.
+    """
+    model_group_config = config.worker_group_config.model_group_config
+    processor_config = getattr(model_group_config, "processor_config", None)
+    processor_path = getattr(processor_config, "processor_path", None)
+    if processor_path:
+        return processor_path
+
+    data_config = getattr(config, "data_config", None)
+    dataset_processor_path = getattr(data_config, "dataset_processor_path", None)
+    if dataset_processor_path:
+        return dataset_processor_path
+
+    return model_group_config.model_config.model_path
 
 
 def resolve_storage_dtype(precision: str = "auto", *, trainable: bool = True):

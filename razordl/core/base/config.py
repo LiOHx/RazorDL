@@ -69,6 +69,7 @@ class BaseProcessorConfig(DictSerializable):
     processor_path: str = None
     max_length: int = 8192
     lazy_tokenize: bool = False  # True = on-the-fly in __getitem__ (saves RAM)
+    cache_tokenized: bool = True  # False = never read/write the tokenized cache
 
 
 
@@ -76,7 +77,6 @@ class BaseProcessorConfig(DictSerializable):
 @dataclass
 class BaseAdapterConfig(DictSerializable):
     use_adapter: bool = False
-    adapter_name: str = "default"
     adapter_path: str = None
     lora_r: int = 8
     lora_alpha: int = 16
@@ -135,6 +135,7 @@ class BaseModelGroupConfig(DictSerializable):
 
 @dataclass
 class BaseWorkerGroupConfig(DictSerializable):
+    # Reserved for multi-model naming; the single-model engine does not use it.
     worker_group_name: str = None
 
 

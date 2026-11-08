@@ -43,6 +43,13 @@ def test_legacy_keys_also_emit_a_visible_log_warning(caplog):
     assert any("fused_linear_tile_size" in r.getMessage() for r in caplog.records)
 
 
+@pytest.mark.parametrize("key", ["optimizer_path", "scheduler_path", "adapter_name"])
+def test_unimplemented_config_keys_rejected(key):
+    """These keys used to be documented but silently ignored; fail loudly."""
+    with pytest.raises(NotImplementedError, match="not implemented"):
+        _model_config({key: "some.module:Class"})
+
+
 @pytest.mark.parametrize("bad", [0, -1, "abc", 2048.5])
 def test_bad_fused_linear_tile_size_rejected_at_config_time(bad):
     """The operator's <=0 check is the last line of defense; config parsing

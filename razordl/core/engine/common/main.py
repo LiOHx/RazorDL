@@ -3,7 +3,6 @@ from datetime import datetime
 from functools import partial
 
 import ray
-import torch
 from omegaconf import OmegaConf
 from ray.train.torch import TorchTrainer
 from torch.utils.data import Dataset
@@ -31,9 +30,11 @@ from razordl.ops.snapshot import (
 def _ray_worker_plan() -> tuple[int, bool]:
     """(num_workers, use_gpu) for the TorchTrainer scaling config, device-aware.
 
-    cuda -> one worker per GPU; mps -> a single worker (Apple Silicon has one
-    GPU); cpu -> 0 workers, which makes Ray run the train loop in the driver
-    process (verified working on a CPU-only Mac).
+    cuda -> one worker per GPU; on an initialized Ray cluster, use the total
+    cluster GPU count instead of the driver's local count so multi-node jobs
+    request every GPU.  mps -> a single worker (Apple Silicon has one GPU);
+    cpu -> 0 workers, which makes Ray run the train loop in the driver process
+    (verified working on a CPU-only Mac).
 
     Resolved through the device MODULE (not direct imports) so tests and
     callers observe the same monkeypatched dispatcher.
@@ -42,6 +43,10 @@ def _ray_worker_plan() -> tuple[int, bool]:
 
     accelerator = hw_device.get_available_device()
     if accelerator == "cuda":
+        if ray.is_initialized():
+            cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
+            if cluster_gpus > 0:
+                return cluster_gpus, True
         return hw_device.get_device_count(), True
     if accelerator == "mps":
         return 1, False

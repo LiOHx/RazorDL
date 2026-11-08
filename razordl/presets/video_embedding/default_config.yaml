@@ -81,11 +81,8 @@ precision: auto                          # auto|bf16|fp16|fp32。auto：有 CUDA
 seed: 42                                        # 随机种子
 
 # ---- Custom ----
-optimizer_path: null                            # 自定义优化器
-scheduler_path: null                            # 自定义 scheduler
 resume_checkpoint_dir: null                     # 手动指定恢复 checkpoint
 ray_kwargs: {}                                  # ray.init() 额外参数
 
 # ---- Multi-Model (单模型不用管) ----
 model_group_name: null
-worker_group_name: null

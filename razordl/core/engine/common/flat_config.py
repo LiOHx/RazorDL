@@ -97,7 +97,6 @@ def build_single_model_config_dict(
     lora_alpha = d.get("lora_alpha", 16)
     lora_dropout = d.get("lora_dropout", 0.05)
     lora_target_modules = d.get("lora_target_modules", ["q_proj", "v_proj", "k_proj", "o_proj"])
-    adapter_name = d.get("adapter_name", "default")
     adapter_path = d.get("adapter_path", None)
     modules_to_save = d.get("modules_to_save", None)
     task_type = d.get("task_type", task_type_default)
@@ -108,6 +107,16 @@ def build_single_model_config_dict(
     grad_accum = d.get("grad_accum", grad_accum_default)
     optimizer_path = d.get("optimizer_path", None)
     scheduler_path = d.get("scheduler_path", None)
+    if optimizer_path or scheduler_path:
+        raise NotImplementedError(
+            "optimizer_path/scheduler_path are not implemented: RazorDL currently "
+            "always uses AdamW and no LR scheduler. Remove these keys from config.yaml."
+        )
+    if d.get("adapter_name"):
+        raise NotImplementedError(
+            "adapter_name is not implemented: PEFT always uses the 'default' adapter. "
+            "Remove this key from config.yaml."
+        )
 
     batch_size = d.get("batch_size", batch_size_default)
     num_epochs = d.get("num_epochs", num_epochs_default)
@@ -116,9 +125,13 @@ def build_single_model_config_dict(
     enable_gradient_checkpointing = d.get("enable_gradient_checkpointing", False)
     enable_activation_offload = d.get("enable_activation_offload", False)
 
-    processor_path = d.get("processor_path", model_path)
+    # `dataset_processor_path` is the older public spelling; fold it into the
+    # canonical processor path so the dataset and model group cannot load
+    # different tokenizers.
+    processor_path = d.get("processor_path") or d.get("dataset_processor_path") or model_path
     sp_size = d.get("sp_size", data_config.get("sp_size", 1))
     lazy_tokenize = d.get("lazy_tokenize", lazy_tokenize_default)
+    cache_tokenized = d.get("cache_tokenized", True)
 
     offload_param = d.get("offload_param", False)
     offload_optimizer = d.get("offload_optimizer", False)
@@ -174,6 +187,7 @@ def build_single_model_config_dict(
                     "processor_path": processor_path,
                     "max_length": processor_max_length,
                     "lazy_tokenize": lazy_tokenize,
+                    "cache_tokenized": cache_tokenized,
                 },
                 "model_config": {
                     "model_path": model_path,
@@ -188,7 +202,6 @@ def build_single_model_config_dict(
                     "_is_offload_optimizer": offload_optimizer,
                     "adapter_config": {
                         "use_adapter": use_adapter,
-                        "adapter_name": adapter_name,
                         "adapter_path": adapter_path,
                         "lora_r": lora_r,
                         "lora_alpha": lora_alpha,

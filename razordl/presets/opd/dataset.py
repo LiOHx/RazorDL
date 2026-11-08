@@ -38,8 +38,11 @@ class OPDDataset(Dataset):
         self.data_config = config.data_config
         self.max_length = getattr(self.data_config, "max_length", 1024)
 
-        model_path = config.worker_group_config.model_group_config.model_config.model_path
-        self.processor = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+        from razordl.ops.model.huggingface import resolve_processor_path
+
+        self.processor = AutoTokenizer.from_pretrained(
+            resolve_processor_path(config), trust_remote_code=True
+        )
         self.processor.padding_side = "left"
         if self.processor.pad_token is None:
             self.processor.pad_token = self.processor.eos_token
