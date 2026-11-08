@@ -7,7 +7,6 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest
-import torch
 from transformers import Qwen2Config, Qwen2ForCausalLM
 from transformers.distributed.fsdp import is_fsdp_managed_module
 

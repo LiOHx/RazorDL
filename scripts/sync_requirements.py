@@ -28,7 +28,10 @@ def _parse_dep(dep: str) -> tuple[str, str]:
 
 def _extract_deps(pyproject_path: str) -> tuple[list[str], dict[str, list[str]]]:
     """Parse [project.dependencies] and [project.optional-dependencies] from pyproject.toml."""
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        import tomli as tomllib
 
     with open(pyproject_path, "rb") as f:
         cfg = tomllib.load(f)

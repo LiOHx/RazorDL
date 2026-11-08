@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from razordl.core.base.config import BaseConfig, BaseModelGroupConfig
+from razordl.core.base.config import BaseConfig
 import os
 import torch.distributed as dist
 

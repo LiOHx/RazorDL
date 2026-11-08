@@ -197,7 +197,7 @@ def model_to_fsdp2_with_lora(model, device_mesh, mp_policy) -> None:
     
     # 打印模型结构以便调试
     if int(os.environ.get("LOCAL_RANK", "0")) == 0:
-        print(f"\n=== Model Structure ===")
+        print("\n=== Model Structure ===")
         print(f"Model type: {type(model)}")
         print(f"Has base_model: {hasattr(model, 'base_model')}")
         
@@ -439,7 +439,7 @@ def save_fsdp2(
         if rank == 0:
             print("[SAVE] Using FSDP2 get_model_state_dict API")
             if is_peft_model:
-                print(f"[SAVE] Detected PEFT/LoRA model")
+                print("[SAVE] Detected PEFT/LoRA model")
                 print(f"[SAVE]   - save_lora_separately={save_lora_separately}")
                 print(f"[SAVE]   - save_full_model={save_full_model}")
                 if not save_full_model and not save_lora_separately:
@@ -473,7 +473,7 @@ def save_fsdp2(
             except Exception as e3:
                 # 最后的回退：直接获取 state_dict（会是分片的！）
                 if rank == 0:
-                    print(f"[SAVE ERROR] All FSDP APIs failed!")
+                    print("[SAVE ERROR] All FSDP APIs failed!")
                     print(f"  get_model_state_dict: {e1}")
                     print(f"  summon_full_params: {e2}")
                     print(f"  FSDP1 API: {e3}")
@@ -578,7 +578,7 @@ def save_fsdp2(
                         import traceback
                         traceback.print_exc()
                 else:
-                    print(f"[SAVE WARNING] No LoRA parameters found in state_dict!")
+                    print("[SAVE WARNING] No LoRA parameters found in state_dict!")
                 
             except Exception as e:
                 print(f"[SAVE WARNING] Failed to save LoRA adapter separately: {e}")
@@ -635,7 +635,7 @@ def save_fsdp2(
                 model.save_pretrained(save_dir, state_dict=state_dict, safe_serialization=True)
         else:
             # 只保存 adapter，但仍需保存 config
-            print(f"[SAVE] Skipping full model save (save_full_model=False)")
+            print("[SAVE] Skipping full model save (save_full_model=False)")
             try:
                 model.config.save_pretrained(save_dir)
             except Exception:
@@ -714,7 +714,7 @@ def save_optimizer_fsdp2(model, optimizer=None, save_dir: str | None = None):
         optimizer_state = optimizer.state_dict()
         
         if rank0:
-            print(f"[SAVE] Using standard optimizer.state_dict()")
+            print("[SAVE] Using standard optimizer.state_dict()")
             # print(f"[SAVE DEBUG] FSDP2 API not available: {e}")
     
     # 只有 rank0 保存文件

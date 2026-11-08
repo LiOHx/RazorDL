@@ -20,7 +20,7 @@ import torch
 
 try:
     from vllm import LLM, SamplingParams
-    from vllm.lora.request import LoRARequest
+    from vllm.lora.request import LoRARequest  # noqa: F401  (availability probe)
     HAS_VLLM = True
 except ImportError:
     HAS_VLLM = False

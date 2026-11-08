@@ -6,7 +6,6 @@ A ``"lora_" in key`` filter once dropped the fully-trained ``lm_head`` /
 silently reloaded the untrained base head.
 """
 
-import os
 
 import pytest
 import torch

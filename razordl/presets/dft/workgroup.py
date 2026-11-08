@@ -10,7 +10,7 @@ import torch
 
 from razordl.core.base import logging
 from razordl.ops.loss.distributed import global_token_denominator
-from razordl.presets.sft.workgroup import SFTModelGroup, SFTWorkGroup
+from razordl.presets.sft.workgroup import SFTWorkGroup
 
 logger = logging.getLogger(__name__)
 

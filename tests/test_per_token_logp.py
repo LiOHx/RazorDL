@@ -9,7 +9,6 @@ import os
 
 import pytest
 import torch
-import torch.nn.functional as F
 
 from razordl.ops.model.per_token_logp import compute_per_token_log_probs
 

@@ -49,7 +49,6 @@ class EngineWorkGroup(AutoSetModelGroupNameWorkGroup):
         for _name, model_group in self.__dict__.items():
             if isinstance(model_group, BaseModelGroup):
                 backend = getattr(model_group, "parallel_backend", None)
-                optimizer = getattr(model_group, "optimizer", None)
                 if backend is not None:
                     backend.load_for_compute(model_group.model)
 

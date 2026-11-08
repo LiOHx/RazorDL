@@ -185,7 +185,7 @@ class BaseTrainer():
             self._check_topology_compat(self.config.trainer_config.resume_checkpoint_dir)
             return ResumeState.from_checkpoint_dir(self.config.trainer_config.resume_checkpoint_dir)
         else:
-            logger.info(f"[RESUME] No checkpoint found, starting from scratch")
+            logger.info("[RESUME] No checkpoint found, starting from scratch")
             logger.info(f"[RESUME] Seed: {self.trainer_config.seed}")
             return ResumeState.from_seed(self.trainer_config.seed)
 
@@ -341,7 +341,7 @@ class BaseTrainer():
         if self.completed_step > 0:
             logger.info(f"[TRAINER] Resuming from completed_step={self.completed_step}")
         else:
-            logger.info(f"[TRAINER] Training starting from scratch")
+            logger.info("[TRAINER] Training starting from scratch")
 
         from tqdm import tqdm
         if is_global_rank0():
@@ -409,7 +409,7 @@ class BaseTrainer():
             if full_ckpt_due:
                 self._save_checkpoint_atomic(checkpoint_dir, self.completed_step)
 
-        logger.info(f"[TRAINER] Training completed")
+        logger.info("[TRAINER] Training completed")
         checkpoint_dir = self.output_dir
         if is_global_rank0():
             os.makedirs(checkpoint_dir, exist_ok=True)

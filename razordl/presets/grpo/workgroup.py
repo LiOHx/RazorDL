@@ -317,7 +317,6 @@ class GRPOWorkGroup(_WorkGroup):
 
             for i in range(batch_size):
                 pt_ids = list(prompt_token_ids[i])  # original (no pad)
-                ans = answers[i]
                 for g in range(self.group_size):
                     idx = i * self.group_size + g
                     rsp_ids = response_token_ids[idx]

@@ -4,7 +4,6 @@ import base64
 import math
 import os
 import tempfile
-import time
 from io import BytesIO
 
 import numpy as np

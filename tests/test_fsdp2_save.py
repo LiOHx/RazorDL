@@ -6,8 +6,6 @@ in a standalone single-process run; before the fallback the gates kept
 silently wrote nothing.
 """
 
-import pytest
-import torch
 from transformers import Qwen2Config, Qwen2ForCausalLM
 
 from razordl.ops.parallel.fsdp2 import save_fsdp2

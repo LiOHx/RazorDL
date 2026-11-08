@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 from razordl.core.base import logging
 from razordl.ops.loss.distributed import global_token_denominator
-from razordl.presets.sft.workgroup import SFTModelGroup, SFTWorkGroup  # [不改] 复用 SFT model loading
+from razordl.presets.sft.workgroup import SFTWorkGroup  # [不改] 复用 SFT model loading
 
 logger = logging.getLogger(__name__)
 

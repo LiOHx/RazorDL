@@ -93,6 +93,13 @@ all = [
     "qwen_vl_utils>=0.0.8",
     "torchvision>=0.21.0",
 ]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-timeout>=2.3.0",
+    "ruff>=0.6.0",
+    "pre-commit>=3.0.0",
+    "tomli>=2.0.0; python_version < '3.11'",
+]
 
 [project.scripts]
 razordl = "razordl.cli:main"
@@ -116,3 +123,32 @@ razordl = [
     "presets/**/default_config.yaml",
     "presets/**/data/**/*",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+timeout = 300
+markers = [
+    "integration: real end-to-end tests that are slower than the unit suite",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["custom_work", "datasets", ".venv", "razordl.egg-info"]
+
+[tool.ruff.lint]
+# Start with high-signal correctness rules.  Import sorting (I) and a wider
+# style set can be enabled after the existing codebase is cleaned up.
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    "E402",  # deliberate lazy imports after sys.path setup
+    "E501",  # line length is not enforced yet
+    "E741",  # ambiguous variable names (l/I/O) are stylistic
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Re-exports the logging API on purpose.
+"razordl/core/base/logging.py" = ["F401"]
+# Compatibility imports are intentionally scattered across FSDP fallbacks.
+"razordl/ops/parallel/fsdp2.py" = ["F401", "F811", "E402"]
