@@ -50,6 +50,7 @@ enable_gradient_checkpointing: false    # 梯度检查点
 sp_size: 1                              # 序列并行。1=关, 2/4/8=开
 # loss 默认流式(FusedLinearCrossEntropy); 自定义 loss 需实现 reduce_per_token_ce
 lazy_tokenize: false
+streaming: false
 cache_tokenized: true
 dataset_processor_path: ""
 num_workers: 2

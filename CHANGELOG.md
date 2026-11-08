@@ -15,6 +15,8 @@ pre-1.0; APIs may change between minor releases.
 - Tiny-model end-to-end SFT integration tests (train, resume, `init_from`).
 - Manual 2-GPU FSDP2 + Ulysses SP smoke script.
 - `cache_tokenized` option to disable the SFT tokenized dataset cache.
+- `streaming: true` JSONL dataset option (byte-offset index, tokenize on
+  demand) for SFT/DFT.
 - Multi-node Ray documentation and cluster-GPU worker planning.
 
 ### Fixed

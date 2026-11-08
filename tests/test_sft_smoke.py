@@ -163,7 +163,9 @@ def test_sft_trains_and_writes_checkpoint(tmp_path, monkeypatch):
 
     exp_dir = tmp_path / "exp"
     _run_training(
-        _flat_config(model_dir, tokenizer_dir, data_dir, tmp_path / "outputs"),
+        _flat_config(
+            model_dir, tokenizer_dir, data_dir, tmp_path / "outputs", streaming=True
+        ),
         exp_dir,
     )
 

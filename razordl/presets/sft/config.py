@@ -10,6 +10,7 @@ class SFTDataConfig(_DataConfig):
     max_length: int = 1024
     dataset_processor_path: str = ""
     sp_size: int = 1
+    streaming: bool = False  # JSONL only: keep offsets, tokenize one line per item
 
 
 @dataclass
@@ -27,6 +28,7 @@ class SFTConfig(_Config):
             "max_length": max_length,
             "sp_size": d.get("sp_size", 1),
             "dataset_processor_path": d.get("dataset_processor_path", ""),
+            "streaming": d.get("streaming", False),
         }
         config_dict = build_single_model_config_dict(
             d,

@@ -1,7 +1,7 @@
 # RazorDL improvement plan
 
-Status: P0–P3 mostly implemented (streaming dataset, performance benchmarks,
-and a release tag remain); P2 still has the optional vLLM smoke.
+Status: P0–P3 mostly implemented (performance benchmarks and a release tag
+remain); P2 still has the optional vLLM smoke.
 
 Baseline (verified 2026-11-09):
 
@@ -13,10 +13,10 @@ Baseline (verified 2026-11-09):
 
 After P0–P3 changes:
 
-- `pytest` → 203 passed, 1 skipped (includes 3 integration smoke tests)
-- `pytest -m "not integration"` → 200 passed, 1 skipped
+- `pytest` → 205 passed, 1 skipped (includes 3 integration smoke tests)
+- `pytest -m "not integration"` → 202 passed, 1 skipped
 - `pytest -m integration` → 3 passed
-- CPU-only (`CUDA_VISIBLE_DEVICES="" pytest`) → 197 passed, 7 skipped
+- CPU-only (`CUDA_VISIBLE_DEVICES="" pytest`) → 199 passed, 7 skipped
 - `ruff check .` and `pre-commit run --all-files` pass
 - `scripts/smoke_fsdp2_sp.py` is syntax-checked but not executed on this box
   (1 CUDA GPU; it requires 2)
@@ -140,10 +140,11 @@ Acceptance:
 
 ## P3 — Scale, performance, release polish
 
-- [ ] **Streaming / memory-mapped dataset** for SFT:
-      `SFTDataset.load_data()` currently loads the whole JSONL into RAM.
-      Consider `datasets` streaming or an `IterableDataset` path; keep the
-      current behavior as the default for small datasets.
+- [x] **Streaming JSONL dataset** for SFT:
+      `streaming: true` builds a byte-offset index and tokenizes one line per
+      `__getitem__`, so the raw dataset is not held in RAM.  It remains
+      map-style (shuffling/resume work); a full `IterableDataset` path and
+      non-JSONL streaming are future work.  Default stays `streaming: false`.
 - [x] **Dataset cache policy**:
       `cache_tokenized: false` disables both reading and writing the
       tokenized cache; documented in the SFT/DFT default configs.

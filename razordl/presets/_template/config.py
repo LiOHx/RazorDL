@@ -18,6 +18,7 @@ class NEWDataConfig(_DataConfig):
     max_length: int = 1024
     dataset_processor_path: str = ""
     sp_size: int = 1
+    streaming: bool = False
     new_param: float = 0.0  # [改] 你的 preset 特有参数（flat key 同名）
 
 
@@ -36,6 +37,7 @@ class NEWConfig(_Config):
             "max_length": max_length,
             "sp_size": d.get("sp_size", 1),
             "dataset_processor_path": d.get("dataset_processor_path", ""),
+            "streaming": d.get("streaming", False),
             "new_param": d.get("new_param", 0.0),  # [改]
         }
         config_dict = build_single_model_config_dict(

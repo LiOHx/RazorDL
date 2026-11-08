@@ -26,6 +26,10 @@ class SFTDataset(Dataset):
     - ``lazy_tokenize=True``: raw records are stored in memory and tokenized
       on-the-fly in ``__getitem__``.  Saves RAM at the cost of CPU work
       every epoch.
+    - ``streaming=True``: JSONL only.  Stores byte offsets instead of raw
+      records and parses/tokenizes one line per ``__getitem__``.  Keeps
+      map-style random access (shuffling/resume) without holding the full
+      dataset in RAM.
 
     Override ``format_item()`` to convert a raw data record into
     OpenAI chat-completion format::
@@ -56,6 +60,7 @@ class SFTDataset(Dataset):
             "cache_tokenized",
             True,
         )
+        self.streaming = getattr(self.data_config, "streaming", False)
 
         from razordl.ops.model.huggingface import resolve_processor_path
 
@@ -67,6 +72,25 @@ class SFTDataset(Dataset):
 
         self.tokenizer = self.processor
         self.dataset_processor = self.processor
+
+        # Streaming JSONL: keep only byte offsets, parse/tokenize one line per
+        # __getitem__.  This avoids holding the whole raw dataset in RAM while
+        # keeping map-style random access (shuffling/resume still work).
+        if self.streaming:
+            self._streaming_file = self._find_data_file()
+            if not self._streaming_file.endswith(".jsonl"):
+                raise ValueError(
+                    "streaming=True requires a .jsonl data file; "
+                    f"found {self._streaming_file}"
+                )
+            self._streaming_offsets = self._build_jsonl_index(self._streaming_file)
+            self.data = self._streaming_offsets
+            self.raw_data = None
+            logger.info(
+                f"[DATASET] Streaming {len(self.data)} samples from "
+                f"{self._streaming_file}"
+            )
+            return
 
         # Load raw records
         self.raw_data = self.load_data()
@@ -115,11 +139,8 @@ class SFTDataset(Dataset):
                 f"(lazy_tokenize=True, tokenize on-the-fly)"
             )
 
-    def load_data(self) -> list:
-        """Load raw data. Auto-detects JSON / JSONL files in the data path.
-
-        Override this for custom data sources (parquet, HuggingFace, DB, etc.).
-        """
+    def _find_data_file(self) -> str:
+        """Locate the first supported data file under ``train_data_path``."""
         data_path = self.data_config.train_data_path
         if not data_path:
             raise ValueError("data_path is not set in config.yaml")
@@ -130,17 +151,41 @@ class SFTDataset(Dataset):
             os.path.join(data_path, "data.jsonl"),
             os.path.join(data_path, "data.json"),
         ]
-        data_file = None
-        for c in candidates:
-            if os.path.exists(c):
-                data_file = c
-                break
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                return candidate
 
-        if data_file is None:
-            raise FileNotFoundError(
-                f"No data file found in {data_path}. "
-                f"Expected one of: {[os.path.basename(c) for c in candidates]}"
-            )
+        raise FileNotFoundError(
+            f"No data file found in {data_path}. "
+            f"Expected one of: {[os.path.basename(c) for c in candidates]}"
+        )
+
+    @staticmethod
+    def _build_jsonl_index(data_file: str) -> list[int]:
+        """Return byte offsets of non-empty lines in a JSONL file."""
+        offsets = []
+        with open(data_file, "rb") as f:
+            while True:
+                offset = f.tell()
+                line = f.readline()
+                if not line:
+                    break
+                if line.strip():
+                    offsets.append(offset)
+        return offsets
+
+    def _load_streaming_item(self, idx: int) -> Any:
+        with open(self._streaming_file, "rb") as f:
+            f.seek(self._streaming_offsets[idx])
+            line = f.readline()
+        return json.loads(line)
+
+    def load_data(self) -> list:
+        """Load raw data. Auto-detects JSON / JSONL files in the data path.
+
+        Override this for custom data sources (parquet, HuggingFace, DB, etc.).
+        """
+        data_file = self._find_data_file()
 
         if data_file.endswith(".jsonl"):
             with open(data_file, "r", encoding="utf-8") as f:
@@ -346,6 +391,8 @@ class SFTDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
+        if self.streaming:
+            return self._tokenize_item(self._load_streaming_item(idx))
         if self.lazy_tokenize:
             return self._tokenize_item(self.data[idx])
         # Strip internal key before returning

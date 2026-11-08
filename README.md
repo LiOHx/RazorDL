@@ -18,6 +18,7 @@ Compared to `transformers.Trainer` and `verl`, RazorDL lets you customize the tr
 - **Sequence Parallelism** -- Ulysses-style SP for long-context training (Qwen2/3/3.5)
 - **Fused Linear CE** -- stream the lm_head cross-entropy tile-by-tile, never materializing the `[B, L, V]` logits (vocab 248K × seq 65K); tune with `fused_linear_tile_size`
 - **Dataset Cache** -- auto-cache tokenized data to disk for instant reload; disable with `cache_tokenized: false`
+- **Streaming JSONL** -- `streaming: true` keeps only byte offsets and tokenizes one line at a time, preserving map-style shuffling/resume
 - **LoRA / PEFT** -- compatible with vLLM key-cleaned adapters
 - **Activation Offloading** -- async CPU offloading with gradient checkpointing
 - **Experiment management** -- auto-created timestamped experiment dirs with code snapshots, provenance hashes, and pip freeze; `resume_mode: auto` detects code/config changes via hash comparison

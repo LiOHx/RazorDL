@@ -10,6 +10,7 @@ class DFTDataConfig(_DataConfig):
     max_length: int = 1024
     dataset_processor_path: str = ""
     sp_size: int = 1
+    streaming: bool = False
     dft_mini_scale: float = 0.0
 
 
@@ -28,6 +29,7 @@ class DFTConfig(_Config):
             "max_length": max_length,
             "sp_size": d.get("sp_size", 1),
             "dataset_processor_path": d.get("dataset_processor_path", ""),
+            "streaming": d.get("streaming", False),
             "dft_mini_scale": d.get("dft_mini_scale", 0.0),
         }
         config_dict = build_single_model_config_dict(

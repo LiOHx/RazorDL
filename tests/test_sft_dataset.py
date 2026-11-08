@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from razordl.presets.sft.dataset import SFTDataset
 
 
@@ -42,6 +44,102 @@ def test_cache_key_changes_with_format_item_and_chat_template(tmp_path, monkeypa
 
     # Same inputs -> same key (the hash is deterministic, not id-based).
     assert base._cache_path() == _dataset(SFTDataset, tmp_path, monkeypatch)._cache_path()
+
+
+class _StreamingTokenizer:
+    chat_template = "{{ messages }}"
+    pad_token = "<pad>"
+    eos_token = "<eos>"
+    padding_side = "left"
+
+    def apply_chat_template(
+        self, messages, tokenize=False, tools=None, add_generation_prompt=False
+    ):
+        return " ".join(message["content"] for message in messages)
+
+    def encode(self, text, add_special_tokens=False):
+        return [1] * len(text.split())
+
+
+def _streaming_config(data_dir, streaming=True):
+    config = type("C", (), {})()
+    config.data_config = type(
+        "D",
+        (),
+        {
+            "train_data_path": str(data_dir),
+            "max_length": 16,
+            "sp_size": 1,
+            "dataset_processor_path": "tokenizer",
+            "streaming": streaming,
+        },
+    )()
+    config.worker_group_config = type("W", (), {})()
+    config.worker_group_config.model_group_config = type("M", (), {})()
+    config.worker_group_config.model_group_config.model_config = type(
+        "MC", (), {"model_path": "base-model"}
+    )()
+    config.worker_group_config.model_group_config.processor_config = type(
+        "PC",
+        (),
+        {
+            "processor_path": "shared-tokenizer",
+            "lazy_tokenize": False,
+            "cache_tokenized": True,
+        },
+    )()
+    return config
+
+
+def test_streaming_jsonl_keeps_offsets_and_tokenizes_on_demand(tmp_path, monkeypatch):
+    import razordl.presets.sft.dataset as dataset_module
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    rows = [
+        {"messages": [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "world"}]},
+        {"messages": [{"role": "user", "content": "what"}, {"role": "assistant", "content": "is"}]},
+        {"messages": [{"role": "user", "content": "two"}, {"role": "assistant", "content": "four"}]},
+    ]
+    with open(data_dir / "train.jsonl", "w") as f:
+        for row in rows:
+            f.write(json.dumps(row) + "\n")
+        f.write("\n")  # blank lines are not samples
+
+    monkeypatch.setattr(
+        dataset_module.AutoTokenizer,
+        "from_pretrained",
+        lambda *args, **kwargs: _StreamingTokenizer(),
+    )
+
+    dataset = SFTDataset(_streaming_config(data_dir))
+
+    assert dataset.streaming
+    assert dataset.raw_data is None
+    assert len(dataset) == 3
+    assert not (data_dir / ".cache").exists()
+
+    item = dataset[1]
+    assert item["input_ids"]
+    assert len(item["input_ids"]) == len(item["attention_mask"])
+    assert len(item["labels"]) == len(item["input_ids"])
+
+
+def test_streaming_rejects_non_jsonl(tmp_path, monkeypatch):
+    import razordl.presets.sft.dataset as dataset_module
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "train.json").write_text(json.dumps([]))
+
+    monkeypatch.setattr(
+        dataset_module.AutoTokenizer,
+        "from_pretrained",
+        lambda *args, **kwargs: _StreamingTokenizer(),
+    )
+
+    with pytest.raises(ValueError, match="requires a .jsonl"):
+        SFTDataset(_streaming_config(data_dir))
 
 
 def test_cache_disabled_returns_no_cache_path(tmp_path, monkeypatch):
