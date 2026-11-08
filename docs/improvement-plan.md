@@ -1,7 +1,7 @@
 # RazorDL improvement plan
 
-Status: P0–P3 mostly implemented (remaining: SP/DataLoader performance probes
-and a release tag); P2 still has the optional vLLM smoke.
+Status: P0–P3 mostly implemented (remaining: DataLoader/end-to-end performance
+probes and a release tag); P2 still has the optional vLLM smoke.
 
 Baseline (verified 2026-11-09):
 
@@ -161,8 +161,11 @@ Acceptance:
 - [x] **Fused CE tile-size benchmark**:
       `scripts/benchmark_fused_linear_ce.py` and `docs/performance.md`
       (sample table from an RTX 2080 Ti).
-- [ ] **Remaining performance probes**: SP attention chunk size, DataLoader
-      workers, and end-to-end step time for real SFT/GRPO configs.
+- [x] **SP chunked-attention benchmark**:
+      `scripts/benchmark_sp_attention.py` and the sample table in
+      `docs/performance.md`.
+- [ ] **Remaining performance probes**: DataLoader workers and end-to-end
+      step time for real SFT/GRPO configs.
 
 ---
 

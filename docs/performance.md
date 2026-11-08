@@ -38,9 +38,32 @@ Takeaways from this run:
   `fused_linear_tile_size` on the real workload; the default 2048 is a
   reasonable starting point, not a universal best.
 
+## Ulysses SP chunked-attention fallback
+
+`_chunked_causal_attention` is the always-available SP attention fallback
+(used when SDPA efficient kernels / xformers cannot handle the shape).  Larger
+chunks are faster but the score buffer grows as `chunk² × heads`.
+
+Run:
+
+```bash
+python scripts/benchmark_sp_attention.py
+```
+
+Sample result (RTX 2080 Ti, fp16, batch 1, heads 8, head_dim 64, 3 repeats):
+
+| seq_len | chunk 512 | chunk 1024 | chunk 2048 |
+|---:|---:|---:|---:|
+| 2048 | 0.0064 s / 54.7 MB | 0.0062 s / 159.7 MB | 0.0130 s / 436.7 MB |
+| 4096 | 0.0159 s / 63.1 MB | 0.0133 s / 168.1 MB | 0.0216 s / 579.3 MB |
+| 8192 | 0.0438 s / 79.9 MB | 0.0336 s / 184.9 MB | 0.0417 s / 596.1 MB |
+
+On this box chunk=1024 was the best time/memory point; chunk=512 traded speed
+for lower memory, and chunk=2048 used substantially more memory.  The SDPA /
+xformers fast paths bypass this fallback entirely, so benchmark the real model
+before tuning.
+
 ## Future probes
 
-- Ulysses SP attention chunk size (`_chunked_causal_attention`) for long
-  sequences.
 - DataLoader worker count vs tokenization/cache hit behavior.
 - End-to-end step time and peak memory for a real SFT/GRPO config.
