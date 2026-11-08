@@ -1,5 +1,8 @@
 # RazorDL
 
+[![CI](https://github.com/LiOHx/RazorDL/actions/workflows/ci.yml/badge.svg)](https://github.com/LiOHx/RazorDL/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+
 A flexible distributed deep learning training framework for LLMs and multimodal models.
 
 RazorDL is designed for researchers and engineers who want **full control over training logic** without writing boilerplate code for distributed training, checkpointing, LoRA, FSDP2, and sequence parallelism.
@@ -13,8 +16,8 @@ Compared to `transformers.Trainer` and `verl`, RazorDL lets you customize the tr
 - **Minimal boilerplate** -- customize only what matters (`update_step`, `build_model`, `Dataset`)
 - **Distributed training** -- built on Ray Train + PyTorch FSDP2
 - **Sequence Parallelism** -- Ulysses-style SP for long-context training (Qwen2/3/3.5)
-- **Chunked Loss** -- avoid OOM from giant logits tensor (vocab 248K × seq 65K)
-- **Dataset Cache** -- auto-cache tokenized data to disk for instant reload
+- **Fused Linear CE** -- stream the lm_head cross-entropy tile-by-tile, never materializing the `[B, L, V]` logits (vocab 248K × seq 65K); tune with `fused_linear_tile_size`
+- **Dataset Cache** -- auto-cache tokenized data to disk for instant reload; disable with `cache_tokenized: false`
 - **LoRA / PEFT** -- compatible with vLLM key-cleaned adapters
 - **Activation Offloading** -- async CPU offloading with gradient checkpointing
 - **Experiment management** -- auto-created timestamped experiment dirs with code snapshots, provenance hashes, and pip freeze; `resume_mode: auto` detects code/config changes via hash comparison
@@ -64,6 +67,22 @@ Install everything:
 pip install -e ".[all]"
 ```
 
+### Development
+
+```bash
+pip install -e ".[dev]"
+pre-commit install
+pytest -m "not integration"
+pytest -m integration   # tiny-model end-to-end SFT smoke test
+ruff check .
+```
+
+`pytest` runs the CPU test suite; GPU-only tests skip automatically when no
+CUDA device is present.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and
+[docs/multi-node.md](docs/multi-node.md) for multi-node Ray training.
+
 ---
 
 ## Quick Start (Beginner)
@@ -102,7 +121,7 @@ The built-in dataset auto-detects the file and uses the OpenAI chat-completion f
 ```yaml
 model: Qwen/Qwen3-4B-Instruct
 data_path: ./data
-output_dir: ./output
+outputs_dir: ./outputs
 max_length: 4096
 lr: 5.0e-5
 lora_r: 8
@@ -312,4 +331,4 @@ RazorDL/
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

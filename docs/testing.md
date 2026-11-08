@@ -2,6 +2,16 @@
 
 Smoke tests for each preset. Loaded on demand via `@docs/testing.md` from the root `CLAUDE.md`.
 
+Automated smoke tests:
+
+```bash
+# CPU integration job: tiny Qwen3 model, real forward/backward/checkpoint
+pytest -m integration
+
+# Manual 2-GPU job: FSDP2 + Ulysses SP, tiny model, 2 training steps
+python scripts/smoke_fsdp2_sp.py
+```
+
 After any smoke test, inspect the resulting checkpoint with:
 
 ```bash

@@ -29,10 +29,10 @@ If vLLM is not available, the preset falls back to HF `generate()` (much slower)
 
 ## Dataset
 
-GRPO uses the **GSM8K** dataset (included in `razordl/datasets/gsm8k/`).
+GRPO uses the **GSM8K** dataset (included in the repository's `datasets/gsm8k/`).
 
 When you run `razordl init --preset grpo`, the CLI automatically copies the
-GSM8K dataset from the shared `razordl/datasets/` directory into your project
+GSM8K dataset from the shared `datasets/` directory into your project
 `data/` folder. The preset declares this via `DATASET = "gsm8k"` in
 `__init__.py`.
 
