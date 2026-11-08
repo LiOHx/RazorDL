@@ -212,15 +212,12 @@ def build_single_model_config_dict(
                     },
                 },
                 "optimizer_config": {
-                    "optimizer_path": optimizer_path,
                     "learning_rate": lr,
                     "weight_decay": weight_decay,
                     "max_grad_norm": max_grad_norm,
                     "accumulate_grad_steps": grad_accum,
                 },
-                "scheduler_config": {
-                    "scheduler_path": scheduler_path,
-                },
+                "scheduler_config": {},
             },
         },
         "trainer_config": {

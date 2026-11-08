@@ -109,7 +109,6 @@ class BaseModelConfig(DictSerializable):
 
 @dataclass
 class BaseOptimizerConfig(DictSerializable):
-    optimizer_path: str = None
     learning_rate: float = 1e-4
     weight_decay: float = 1e-2
     max_grad_norm: float | None = 1.0
@@ -119,7 +118,7 @@ class BaseOptimizerConfig(DictSerializable):
 
 @dataclass
 class BaseSchedulerConfig(DictSerializable):
-    scheduler_path: str = None
+    """Reserved for future LR-scheduler configuration (currently unused)."""
 
 
 
