@@ -157,7 +157,8 @@ Acceptance:
       `_ray_worker_plan()` now requests `ray.cluster_resources()["GPU"]`
       workers instead of only the driver's local count.
 - [x] **Add `CONTRIBUTING.md` / `CHANGELOG.md`**:
-      release tagging is still pending (requires a maintainer decision).
+      release tagging is still pending; `docs/release.md` records the
+      pre-tag checks (2-GPU and vLLM verification are the current blockers).
 - [x] **Fused CE tile-size benchmark**:
       `scripts/benchmark_fused_linear_ce.py` and `docs/performance.md`
       (sample table from an RTX 2080 Ti).
