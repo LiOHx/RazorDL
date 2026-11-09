@@ -45,7 +45,7 @@ Copy `presets/_template/` and edit files marked `[改]`. The CLI auto-discovers 
 
 ## CLI integration
 
-The CLI auto-discovers presets via the rules in `@razordl/cli/CLAUDE.md`. As long as your preset follows the directory contract + naming rules above, no CLI changes are needed. From a preset author's perspective the contract is: expose `{CamelCase}Config` / `WorkGroup` / `Dataset` / `Collator` aliases in `__init__.py`, and the CLI will find them.
+The CLI auto-discovers presets via the rules in `@razordl/cli/AGENTS.md`. As long as your preset follows the directory contract + naming rules above, no CLI changes are needed. From a preset author's perspective the contract is: expose `{CamelCase}Config` / `WorkGroup` / `Dataset` / `Collator` aliases in `__init__.py`, and the CLI will find them.
 
 ## HF generate on the policy
 
@@ -53,7 +53,7 @@ Call `inference_model.generate(...)` only inside `with model_group.generation_co
 
 ## Model profile enforcement
 
-Every preset's `build_model()` MUST go through `razordl.ops.model.huggingface.enforce_model_profile(model_path)`. LM-style presets get this automatically through `build_causal_lm`; multimodal presets call it explicitly. See `@razordl/ops/model/profiles/CLAUDE.md` for adding support for a new model family.
+Every preset's `build_model()` MUST go through `razordl.ops.model.huggingface.enforce_model_profile(model_path)`. LM-style presets get this automatically through `build_causal_lm`; multimodal presets call it explicitly. See `@razordl/ops/model/profiles/AGENTS.md` for adding support for a new model family.
 
 ## Generated code self-containment
 

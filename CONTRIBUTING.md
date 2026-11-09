@@ -34,7 +34,7 @@ python scripts/smoke_fsdp2_sp.py
 
 ## Architecture rules
 
-Read the nearest `CLAUDE.md` before editing a subtree.  The hard rules that
+Read the nearest `AGENTS.md` before editing a subtree.  The hard rules that
 matter most:
 
 - Dependency direction is a tree: `base -> engine/common -> engine variant ->

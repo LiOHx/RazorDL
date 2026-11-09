@@ -1,6 +1,6 @@
 """Experiment-management contracts: init_from forks and snapshot copy recovery.
 
-Both features were documented in engine/CLAUDE.md but did not work; these
+Both features were documented in engine/AGENTS.md but did not work; these
 tests pin the behaviour so the driver / worker split cannot drift again.
 """
 

@@ -4,7 +4,7 @@ Delegates to backend-specific modules (cuda, mps, xpu, rocm...).
 Adding a new hardware backend only requires a new module + entries here.
 This file is a PURE dispatcher: per-device knowledge (counts, probes,
 describe fields) lives only in the backend file — see this directory's
-CLAUDE.md hard rule.
+AGENTS.md hard rule.
 """
 
 import importlib
@@ -13,7 +13,7 @@ import torch
 
 
 def _backend(name: str):
-    """Lazily import a backend module (see this directory's CLAUDE.md hard rule).
+    """Lazily import a backend module (see this directory's AGENTS.md hard rule).
 
     Resolved relative to ``__package__`` so the same file works inside the
     ``razordl`` package and in a full-mode export, where it lives at

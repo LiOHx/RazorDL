@@ -1,6 +1,6 @@
 # Testing workflows
 
-Smoke tests for each preset. Loaded on demand via `@docs/testing.md` from the root `CLAUDE.md`.
+Smoke tests for each preset. Loaded on demand via `@docs/testing.md` from the root `AGENTS.md`.
 
 Automated smoke tests:
 

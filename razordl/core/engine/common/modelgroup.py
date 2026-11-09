@@ -60,7 +60,7 @@ class ParallelModelGroup(BaseModelGroup):
     def get_device(self):
         """The accelerator this group trains on, via the hardware layer's
         single entry point (no local cuda/cpu copies — the fourth such copy
-        silently dropped MPS to CPU; see ops/hardware/CLAUDE.md)."""
+        silently dropped MPS to CPU; see ops/hardware/AGENTS.md)."""
         from razordl.ops.hardware import device as hw_device
 
         if hw_device.get_available_device() == "cuda":

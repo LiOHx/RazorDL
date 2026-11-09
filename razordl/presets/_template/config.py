@@ -3,7 +3,7 @@
 Shape copied from presets/dft/config.py: own DataConfig with the preset's
 extra keys, and from_flat_dict delegating everything shared to
 build_single_model_config_dict (never copy the trainer/model/optimizer
-mapping here — see presets/CLAUDE.md).
+mapping here — see presets/AGENTS.md).
 """
 
 from razordl.core.engine.common.flat_config import build_single_model_config_dict

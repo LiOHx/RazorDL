@@ -96,7 +96,7 @@ def enforce_model_profile(model_path: str):
     registered for the checkpoint's ``model_type``.
 
     Every preset's ``build_model()`` MUST call this before loading the HF
-    model — see the Key Invariants section in ``CLAUDE.md``.  To add support
+    model — see the Key Invariants section in ``AGENTS.md``.  To add support
     for a new family, drop a file at
     ``razordl/ops/model/profiles/<model_type>.py`` and ``@register`` a
     ``ModelProfile``.

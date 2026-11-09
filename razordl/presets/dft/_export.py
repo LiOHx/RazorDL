@@ -29,7 +29,7 @@ def export_workgroup(preset_pkg_dir: str) -> str:
     base_wg_cls = replace_ident(base_wg_cls, "SFTModelGroup", "ModelGroup")
     base_wg_cls = base_wg_cls.replace("class _BaseWorkGroup(WorkGroup):", "class _BaseWorkGroup(_WorkGroup):")
     # The extracted class carries SFT's own docstring; the generated file
-    # is not an SFT preset (presets/CLAUDE.md: strip SFT-specific docstrings).
+    # is not an SFT preset (presets/AGENTS.md: strip SFT-specific docstrings).
     base_wg_cls = replace_class_docstring(
         base_wg_cls, "Base LM workgroup: SP split, streaming next-token CE."
     )
