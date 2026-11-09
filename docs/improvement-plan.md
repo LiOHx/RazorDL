@@ -1,7 +1,7 @@
 # RazorDL improvement plan
 
-Status: P0–P3 mostly implemented (remaining: DataLoader/end-to-end performance
-probes and a release tag); P2 still has the optional vLLM smoke.
+Status: P0–P3 mostly implemented (remaining: end-to-end performance probe and
+a release tag); P2 still has the optional vLLM smoke.
 
 Baseline (verified 2026-11-09):
 
@@ -164,8 +164,10 @@ Acceptance:
 - [x] **SP chunked-attention benchmark**:
       `scripts/benchmark_sp_attention.py` and the sample table in
       `docs/performance.md`.
-- [ ] **Remaining performance probes**: DataLoader workers and end-to-end
-      step time for real SFT/GRPO configs.
+- [x] **SFT DataLoader mode/worker benchmark**:
+      `scripts/benchmark_sft_dataloader.py` and the sample table in
+      `docs/performance.md`.
+- [ ] **End-to-end step-time probe** for a real SFT/GRPO config.
 
 ---
 

@@ -20,6 +20,7 @@ pre-1.0; APIs may change between minor releases.
 - Multi-node Ray documentation and cluster-GPU worker planning.
 - Fused linear CE tile-size benchmark script and performance notes.
 - Ulysses SP chunked-attention benchmark script.
+- SFT DataLoader mode/worker benchmark script.
 
 ### Fixed
 

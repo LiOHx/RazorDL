@@ -63,7 +63,30 @@ for lower memory, and chunk=2048 used substantially more memory.  The SDPA /
 xformers fast paths bypass this fallback entirely, so benchmark the real model
 before tuning.
 
+## SFT DataLoader modes and worker count
+
+`scripts/benchmark_sft_dataloader.py` compares offline / lazy / streaming
+datasets and DataLoader worker counts.  It uses a deterministic fake tokenizer
+to isolate dataset/worker overhead from real tokenizer cost.
+
+```bash
+python scripts/benchmark_sft_dataloader.py --samples 2000 --max-batches 50
+```
+
+Sample result (fake tokenizer, 2000 samples, batch 8, 48 timed batches,
+2 repeats):
+
+| mode | workers 0 | workers 2 | workers 4 |
+|---|---:|---:|---:|
+| offline | 215k samples/s | 5.9k | 6.0k |
+| lazy | 99k samples/s | 5.5k | 6.1k |
+| streaming | 57k samples/s | 5.7k | 5.8k |
+
+Takeaway: with a trivial tokenizer, worker process IPC dominates and 0 workers
+wins.  Workers only pay off when per-sample work (real tokenization, video
+decode, augmentation) is expensive enough to exceed that overhead.  Measure
+with the real tokenizer/data before changing `num_workers`.
+
 ## Future probes
 
-- DataLoader worker count vs tokenization/cache hit behavior.
 - End-to-end step time and peak memory for a real SFT/GRPO config.
