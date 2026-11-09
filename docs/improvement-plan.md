@@ -1,7 +1,7 @@
 # RazorDL improvement plan
 
-Status: P0–P3 mostly implemented (remaining: 2-GPU verification and a release
-tag).
+Status: P0–P3 implemented; v0.1.0 alpha tagged 2026-11-09.  The 2-GPU smoke
+test remains unverified (accepted exception for this alpha tag).
 
 Baseline (verified 2026-11-09):
 

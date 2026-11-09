@@ -3,7 +3,9 @@
 All notable changes to RazorDL are documented here.  The project is currently
 pre-1.0; APIs may change between minor releases.
 
-## [Unreleased]
+## [0.1.0] - 2026-11-09
+
+Initial alpha release.
 
 ### Added
 
@@ -55,7 +57,3 @@ pre-1.0; APIs may change between minor releases.
 - `docs/multi-node.md`.
 - `docs/vllm.md` with the tested vLLM 0.32 / torch 2.13 / Python 3.11
   environment and the rollout smoke instructions (Qwen3.5-0.8B and 4B).
-
-## [0.1.0]
-
-Initial alpha release.
