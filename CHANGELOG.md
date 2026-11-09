@@ -21,6 +21,7 @@ pre-1.0; APIs may change between minor releases.
 - Fused linear CE tile-size benchmark script and performance notes.
 - Ulysses SP chunked-attention benchmark script.
 - SFT DataLoader mode/worker benchmark script.
+- Manual vLLM rollout smoke script (`scripts/smoke_vllm_rollout.py`).
 
 ### Fixed
 

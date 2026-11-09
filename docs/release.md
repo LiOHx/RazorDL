@@ -14,8 +14,10 @@ public promise that the listed checks passed on the stated hardware.
       preset's optional deps if the test skips.
 - [ ] 2-GPU smoke test passes on a real 2-GPU host:
       `python scripts/smoke_fsdp2_sp.py`.
-- [ ] If releasing GRPO/OPD, run the vLLM smoke path on a machine with vLLM
-      installed (at minimum `SKIP_VLLM=1` fallback, then a real vLLM run).
+- [x] vLLM rollout smoke passes (`scripts/smoke_vllm_rollout.py`; verified
+      with vLLM 0.32 + Qwen3.5-0.8B on a single RTX 2080 Ti).
+- [ ] If releasing GRPO/OPD, run a full preset with vLLM rollout + weight
+      sync and check reward/loss/checkpoint behavior.
 - [ ] Check the known limitations in the README / preset docs are still
       accurate.
 - [ ] Move `CHANGELOG.md` entries from `[Unreleased]` to the release version
@@ -36,8 +38,8 @@ git push origin vX.Y.Z
   are covered.
 - The 2-GPU `scripts/smoke_fsdp2_sp.py` has not been run on this dev box
   (1 GPU only).
-- vLLM is not installed in the current environment, so the optional
-  GRPO/OPD vLLM smoke path is unverified.
+- vLLM rollout generation is verified in a separate vLLM 0.32 environment;
+  full GRPO/OPD training with vLLM weight sync is still unverified.
 - `video_embedding` needs optional `PIL`/`decord`/`torchvision`; the full
   export test skips when those are absent.
 

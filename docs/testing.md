@@ -52,6 +52,22 @@ Run the SFT flow above once with `save_steps: 5`, `save_ckpt_steps: 10`, `grad_a
 
 ---
 
+## vLLM rollout smoke (manual)
+
+The project `.venv` does not install vLLM (CUDA-version sensitive).  Use a
+separate environment that has vLLM, and point `PYTHONPATH` at the repo if
+RazorDL is not installed there:
+
+```bash
+PYTHONPATH=. /path/to/vllm-env/bin/python scripts/smoke_vllm_rollout.py \
+    --model /path/to/Qwen3.5-0.8B
+```
+
+Verified with vLLM 0.32.0 + Qwen3.5-0.8B on an RTX 2080 Ti (single GPU):
+the wrapper loads the model, generates one completion, and returns matching
+token/mask lists.  This covers the rollout generation path, not full GRPO/OPD
+training or weight sync.
+
 ## GRPO preset
 
 Requires extra deps:

@@ -1,7 +1,7 @@
 # RazorDL improvement plan
 
-Status: P0–P3 mostly implemented (remaining: end-to-end performance probe and
-a release tag); P2 still has the optional vLLM smoke.
+Status: P0–P3 mostly implemented (remaining: 2-GPU verification, end-to-end
+performance probe, full GRPO/OPD vLLM training smoke, and a release tag).
 
 Baseline (verified 2026-11-09):
 
@@ -122,10 +122,14 @@ Acceptance:
       - Documented in `docs/testing.md`; not run in GitHub-hosted CI (needs
         2 CUDA GPUs).  The current dev box has 1 GPU, so this script is
         syntax-checked but not executed here.
-- [ ] **GRPO/OPD vLLM smoke test** (optional, manual):
-      - Tiny policy model + `SKIP_VLLM=1` HF fallback first, then a vLLM run.
-      - Assert reward/loss metrics are produced and only the policy
-        checkpoint is written.
+- [x] **vLLM rollout smoke** (manual):
+      - `scripts/smoke_vllm_rollout.py` loads a model through
+        `GRPOVLLMRollout`, generates one completion, and checks token/mask
+        shapes.
+      - Verified with vLLM 0.32.0 + Qwen3.5-0.8B on an RTX 2080 Ti.
+- [ ] **Full GRPO/OPD vLLM training smoke**: run the actual preset with vLLM
+      rollout + weight sync and assert reward/loss metrics and that only the
+      policy checkpoint is written.
 - [x] **Experiment-management integration test**:
       - `tests/test_sft_smoke.py::test_resume_from_checkpoint_continues` runs
         a real 2-step job, resumes from `checkpoint_000002`, and asserts the
