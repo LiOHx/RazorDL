@@ -1,7 +1,7 @@
 # RazorDL improvement plan
 
-Status: P0–P3 mostly implemented (remaining: 2-GPU verification, end-to-end
-performance probe, and a release tag).
+Status: P0–P3 mostly implemented (remaining: 2-GPU verification and a release
+tag).
 
 Baseline (verified 2026-11-09):
 
@@ -173,7 +173,9 @@ Acceptance:
 - [x] **SFT DataLoader mode/worker benchmark**:
       `scripts/benchmark_sft_dataloader.py` and the sample table in
       `docs/performance.md`.
-- [ ] **End-to-end step-time probe** for a real SFT/GRPO config.
+- [x] **End-to-end SFT step-time probe**:
+      `scripts/benchmark_sft_step.py` + sample DDP/FSDP2 table in
+      `docs/performance.md` (Qwen3-0.6B, single RTX 2080 Ti).
 
 ---
 

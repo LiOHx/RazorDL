@@ -87,6 +87,32 @@ wins.  Workers only pay off when per-sample work (real tokenization, video
 decode, augmentation) is expensive enough to exceed that overhead.  Measure
 with the real tokenizer/data before changing `num_workers`.
 
+## End-to-end SFT step time
+
+`scripts/benchmark_sft_step.py` runs the real SFT trainer for N steps and
+reports per-step time plus peak GPU memory:
+
+```bash
+.venv/bin/python scripts/benchmark_sft_step.py \
+    --model /path/to/Qwen3-0.6B \
+    --data datasets/demo_chat \
+    --steps 5
+```
+
+Sample result (Qwen3-0.6B, demo_chat 5 rows, batch 1, max_length 256, fp16,
+RTX 2080 Ti, 22 GB, single GPU):
+
+| backend | step times (s) | steady mean | peak GPU |
+|---|---|---:|---:|
+| ddp | 0.56, 0.19, 0.17, 0.40, 0.16 | 0.230 s | 11.94 GB |
+| fsdp2 | 0.64, 0.23, 0.20, 0.69, 0.22 | 0.335 s | 11.94 GB |
+
+The first step includes warmup; `steady mean` excludes it.  On a single GPU,
+FSDP2's sharding/wrapping overhead makes it slower than DDP; multi-GPU is the
+case where FSDP2 is expected to pay off.
+
 ## Future probes
 
-- End-to-end step time and peak memory for a real SFT/GRPO config.
+- Multi-GPU scaling for DDP vs FSDP2.
+- GRPO/OPD end-to-end step time with vLLM (the smoke scripts currently check
+  correctness, not throughput).

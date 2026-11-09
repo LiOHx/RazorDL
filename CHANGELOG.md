@@ -21,6 +21,7 @@ pre-1.0; APIs may change between minor releases.
 - Fused linear CE tile-size benchmark script and performance notes.
 - Ulysses SP chunked-attention benchmark script.
 - SFT DataLoader mode/worker benchmark script.
+- End-to-end SFT step-time/peak-memory benchmark script.
 - Manual vLLM rollout smoke script (`scripts/smoke_vllm_rollout.py`).
 - Full GRPO/OPD vLLM training smoke scripts (`smoke_grpo_vllm.py`,
   `smoke_opd_vllm.py`); both verified with Qwen3-0.6B.
