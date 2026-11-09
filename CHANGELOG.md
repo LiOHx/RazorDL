@@ -48,7 +48,7 @@ pre-1.0; APIs may change between minor releases.
 - `docs/improvement-plan.md` with the prioritized roadmap.
 - `docs/multi-node.md`.
 - `docs/vllm.md` with the tested vLLM 0.32 / torch 2.13 / Python 3.11
-  environment and the rollout smoke instructions.
+  environment and the rollout smoke instructions (Qwen3.5-0.8B and 4B).
 
 ## [0.1.0]
 

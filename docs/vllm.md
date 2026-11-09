@@ -17,6 +17,7 @@ This is the environment the vLLM rollout smoke was verified with:
 | CUDA wheels | cu129; driver 12.7 worked via minor-version compatibility |
 | GPU | RTX 2080 Ti (sm_75) |
 | RazorDL extras | core + `grpo` / `opd` |
+| Verified models | Qwen3.5-0.8B and Qwen3.5-4B (`Qwen3_5ForConditionalGeneration`) |
 | Verified path | `GRPOVLLMRollout` generation (`scripts/smoke_vllm_rollout.py`) |
 
 `vllm_rollout.py` targets the vLLM V1 API (the module docstring mentions
@@ -51,6 +52,20 @@ PYTHONPATH=. /path/to/razordl-vllm/bin/python \
     scripts/smoke_vllm_rollout.py \
     --model /path/to/Qwen3.5-0.8B
 ```
+
+Qwen3.5-4B also works on the same 22 GB card:
+
+```bash
+PYTHONPATH=. /path/to/razordl-vllm/bin/python \
+    scripts/smoke_vllm_rollout.py \
+    --model /path/to/Qwen3.5-4B \
+    --gpu-memory-utilization 0.5 \
+    --max-model-len 256
+```
+
+At `gpu_memory_utilization=0.5` the 4B model leaves only ~0.69 GiB for KV
+cache (6 concurrent 256-token requests); the 0.8B model leaves ~6.8 GiB.
+Raise the utilization or lower `max_model_len` if you need more concurrency.
 
 Expected output ends with:
 
