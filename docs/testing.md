@@ -69,6 +69,19 @@ the wrapper loads the model, generates one completion, and returns matching
 token/mask lists.  This covers the rollout generation path, not full GRPO/OPD
 training or weight sync.
 
+## GRPO / OPD full vLLM training smoke
+
+After the rollout smoke, run the full pipeline in the vLLM environment:
+
+```bash
+.venv-vllm/bin/python scripts/smoke_grpo_vllm.py --model /path/to/Qwen3-0.6B
+.venv-vllm/bin/python scripts/smoke_opd_vllm.py --model /path/to/Qwen3-0.6B
+```
+
+Both run 2 real steps, exercise vLLM rollout + weight sync, and assert finite
+losses and a final checkpoint.  OPD defaults to fp32 because fp16 hit a
+GradScaler overflow on the 2080 Ti test card.
+
 ## GRPO preset
 
 Requires extra deps:

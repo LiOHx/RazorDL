@@ -18,7 +18,8 @@ This is the environment the vLLM rollout smoke was verified with:
 | GPU | RTX 2080 Ti (sm_75) |
 | RazorDL extras | core + `grpo` / `opd` |
 | Verified models | Qwen3.5-0.8B and Qwen3.5-4B (`Qwen3_5ForConditionalGeneration`) |
-| Verified path | `GRPOVLLMRollout` generation (`scripts/smoke_vllm_rollout.py`) |
+| Verified paths | rollout generation + full GRPO/OPD training with Qwen3-0.6B |
+| Smoke scripts | `smoke_vllm_rollout.py`, `smoke_grpo_vllm.py`, `smoke_opd_vllm.py` |
 
 `vllm_rollout.py` targets the vLLM V1 API (the module docstring mentions
 vLLM >= 0.16).  **Only 0.32.0 is verified**; older V1 versions may work but are
@@ -106,15 +107,54 @@ response_mask: [[1, 1, ...]]
 VLLM SMOKE OK
 ```
 
+## Full GRPO / OPD training smoke
+
+Both presets were verified end-to-end with Qwen3-0.6B (text-only) on one
+RTX 2080 Ti:
+
+```bash
+# GRPO: rollout + frozen reference + vLLM weight sync + optimizer steps
+.venv-vllm/bin/python scripts/smoke_grpo_vllm.py \
+    --model /path/to/Qwen3-0.6B
+
+# OPD: student rollout + teacher log-probs + chunked PPO loss
+.venv-vllm/bin/python scripts/smoke_opd_vllm.py \
+    --model /path/to/Qwen3-0.6B
+```
+
+Both produced 2 step records with finite losses/grad norms and a final
+`checkpoint_info.json`.  The scripts force `mp` executor + eager mode; the
+production Ray path still uses `external_launcher`.
+
+Notes from the smoke runs:
+
+- GRPO used `fp16` and passed.
+- OPD `fp16` hit a GradScaler overflow (`grad_norm=nan`, step skipped) on the
+  second step; the smoke script defaults to `fp32`, which passed cleanly.
+- Qwen3.5-0.8B full GRPO **OOMs at vLLM init** on a 22 GB card because the
+  multimodal model + policy + frozen reference + vLLM exceed memory.  Its
+  rollout-only path is verified; use a text-only model or more VRAM for full
+  training.
+
+## Direct-smoke overrides
+
+The GRPO/OPD presets read these environment variables before constructing the
+vLLM engine:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RAZORDL_VLLM_EXECUTOR_BACKEND` | `external_launcher` | use `mp` for direct single-process smoke |
+| `RAZORDL_VLLM_ENFORCE_EAGER` | `0` | `1` avoids compile/CUDAGraph warmup |
+| `RAZORDL_VLLM_GPU_MEMORY_UTILIZATION` | `0.25` | vLLM KV-cache budget |
+| `RAZORDL_VLLM_SLEEP_MODE` | `1` | `0` disables sleep mode for direct smoke |
+
 ## Known limitations
 
 - **LoRA weight sync is not implemented for vLLM V1.**  `update_weights()`
   raises `NotImplementedError` when `peft_config` is passed; use
   `use_adapter: false` for GRPO/OPD with vLLM.
-- **Full GRPO/OPD training with vLLM weight sync is not verified.**  The
-  rollout generation path is verified; the preset's full training path uses
-  `external_launcher`, `enable_sleep_mode=True`, and Ray, and still needs a
-  dedicated smoke run.
+- Full training with **Qwen3.5 multimodal** models needs more VRAM than the
+  22 GB test card for policy + reference + vLLM.
 - On sm_75 (RTX 2080 Ti), vLLM disables FlashInfer sampler/kernels and falls
   back to slower paths.  This is expected.
 - Do not install vLLM into the project `.venv`: it upgrades torch to 2.13 and

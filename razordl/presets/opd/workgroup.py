@@ -89,14 +89,24 @@ class OPDPolicyModelGroup(OPDCausalLMModelGroup):
             use_lora = adapter_cfg.use_adapter
             lora_r = getattr(adapter_cfg, "lora_r", 8)
 
+            # Same direct-smoke overrides as the GRPO preset.
+            executor_backend = os.environ.get(
+                "RAZORDL_VLLM_EXECUTOR_BACKEND", "external_launcher"
+            )
+            enforce_eager = os.environ.get("RAZORDL_VLLM_ENFORCE_EAGER", "0") == "1"
+            gpu_memory_utilization = float(
+                os.environ.get("RAZORDL_VLLM_GPU_MEMORY_UTILIZATION", "0.25")
+            )
+            enable_sleep_mode = os.environ.get("RAZORDL_VLLM_SLEEP_MODE", "1") == "1"
+
             inf_cfg = InferenceConfig(
                 model=model_path,
-                enable_sleep_mode=True,
+                enable_sleep_mode=enable_sleep_mode,
                 tensor_parallel_size=1,
-                distributed_executor_backend="external_launcher",
+                distributed_executor_backend=executor_backend,
                 dtype=resolve_vllm_dtype_name(resolve_precision(model_cfg.precision)),
-                enforce_eager=False,
-                gpu_memory_utilization=0.25,
+                enforce_eager=enforce_eager,
+                gpu_memory_utilization=gpu_memory_utilization,
                 disable_custom_all_reduce=True,
                 skip_tokenizer_init=False,
                 max_model_len=max_model_len,

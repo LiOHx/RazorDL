@@ -22,8 +22,11 @@ pre-1.0; APIs may change between minor releases.
 - Ulysses SP chunked-attention benchmark script.
 - SFT DataLoader mode/worker benchmark script.
 - Manual vLLM rollout smoke script (`scripts/smoke_vllm_rollout.py`).
+- Full GRPO/OPD vLLM training smoke scripts (`smoke_grpo_vllm.py`,
+  `smoke_opd_vllm.py`); both verified with Qwen3-0.6B.
 - Project-local `.venv-vllm` (vLLM 0.32.0+cu129 / torch 2.13.0+cu129)
   verified with Qwen3.5-0.8B/4B; full test suite passes there.
+- Env overrides for direct vLLM smoke (`RAZORDL_VLLM_*`).
 
 ### Fixed
 

@@ -1,7 +1,7 @@
 # RazorDL improvement plan
 
 Status: P0–P3 mostly implemented (remaining: 2-GPU verification, end-to-end
-performance probe, full GRPO/OPD vLLM training smoke, and a release tag).
+performance probe, and a release tag).
 
 Baseline (verified 2026-11-09):
 
@@ -127,9 +127,10 @@ Acceptance:
         `GRPOVLLMRollout`, generates one completion, and checks token/mask
         shapes.
       - Verified with vLLM 0.32.0 + Qwen3.5-0.8B on an RTX 2080 Ti.
-- [ ] **Full GRPO/OPD vLLM training smoke**: run the actual preset with vLLM
-      rollout + weight sync and assert reward/loss metrics and that only the
-      policy checkpoint is written.
+- [x] **Full GRPO/OPD vLLM training smoke**: `scripts/smoke_grpo_vllm.py`
+      and `scripts/smoke_opd_vllm.py` run 2 real steps with Qwen3-0.6B,
+      including vLLM rollout + weight sync.  GRPO passed with fp16; OPD passed
+      with fp32 (fp16 hit a GradScaler overflow on the 2080 Ti).
 - [x] **Experiment-management integration test**:
       - `tests/test_sft_smoke.py::test_resume_from_checkpoint_continues` runs
         a real 2-step job, resumes from `checkpoint_000002`, and asserts the

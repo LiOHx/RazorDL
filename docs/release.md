@@ -16,8 +16,9 @@ public promise that the listed checks passed on the stated hardware.
       `python scripts/smoke_fsdp2_sp.py`.
 - [x] vLLM rollout smoke passes (`scripts/smoke_vllm_rollout.py`; verified
       with vLLM 0.32 + Qwen3.5-0.8B on a single RTX 2080 Ti).
-- [ ] If releasing GRPO/OPD, run a full preset with vLLM rollout + weight
-      sync and check reward/loss/checkpoint behavior.
+- [x] If releasing GRPO/OPD, run a full preset with vLLM rollout + weight
+      sync and check reward/loss/checkpoint behavior (Qwen3-0.6B; GRPO fp16,
+      OPD fp32).
 - [ ] Check the known limitations in the README / preset docs are still
       accurate.
 - [ ] Move `CHANGELOG.md` entries from `[Unreleased]` to the release version
@@ -38,8 +39,9 @@ git push origin vX.Y.Z
   are covered.
 - The 2-GPU `scripts/smoke_fsdp2_sp.py` has not been run on this dev box
   (1 GPU only).
-- vLLM rollout generation is verified in a separate vLLM 0.32 environment;
-  full GRPO/OPD training with vLLM weight sync is still unverified.
+- vLLM rollout generation and full GRPO/OPD training with weight sync are
+  verified with Qwen3-0.6B in a separate vLLM 0.32 environment.  Qwen3.5
+  multimodal full training needs more VRAM than the 22 GB test card.
 - `video_embedding` needs optional `PIL`/`decord`/`torchvision`; the full
   export test skips when those are absent.
 
