@@ -24,6 +24,37 @@ This is the environment the vLLM rollout smoke was verified with:
 vLLM >= 0.16).  **Only 0.32.0 is verified**; older V1 versions may work but are
 not covered by CI or the smoke script.
 
+## Project-local environment (tested)
+
+A project-local `.venv-vllm` was built and verified in this repository:
+
+| Package | Version |
+|---|---|
+| Python | 3.11.15 |
+| vLLM | 0.32.0+cu129 (GitHub release wheel) |
+| torch | 2.13.0+cu129 |
+| torchvision / torchaudio / torchcodec | 0.28.0+cu129 / 2.11.0+cu129 / 0.16.0+cu129 |
+| transformers | 5.19.0 |
+| numpy | 2.3.5 |
+| fsspec | 2025.3.0 |
+| cuda-python / cuda-bindings | 12.9.10 / 12.9.10 |
+
+`uv pip check` is clean and the full test suite passes in that environment
+(211 passed).  Use it with:
+
+```bash
+source .venv-vllm/bin/activate
+python scripts/smoke_vllm_rollout.py --model /path/to/Qwen3.5-0.8B
+```
+
+The environment directory contains uv's own `.gitignore`, so it is not
+committed.
+
+> **Important:** do not install plain `vllm==0.32.0` from PyPI on this driver.
+> PyPI resolves torch `+cu130`, which fails on the installed 12.7 driver.
+> Use the vLLM `+cu129` wheel from the GitHub release and install torch /
+> torchvision / torchaudio / torchcodec from the PyTorch `cu129` index.
+
 ## Install
 
 Create a separate environment and install RazorDL first, then vLLM (vLLM's
