@@ -31,6 +31,8 @@ pre-1.0; APIs may change between minor releases.
 - Multi-node Ray jobs request the cluster GPU count instead of only the
   driver's local GPU count.
 - `scripts/sync_requirements.py` works on Python 3.10 via a `tomli` fallback.
+- Pin `fsspec[http]<=2025.3.0` for datasets 4.x compatibility; `uv pip check`
+  is clean again.
 
 ### Removed
 

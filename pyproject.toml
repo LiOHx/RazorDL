@@ -57,12 +57,16 @@ dependencies = [
 [project.optional-dependencies]
 sft = [
     "datasets>=2.14.0",
+    # datasets 4.x declares fsspec<=2025.3.0; pin it explicitly so a newer
+    # fsspec pulled by another package does not leave a broken resolution.
+    "fsspec[http]<=2025.3.0",
     # <16 pinned us to a NumPy-1-only build; transformers 5.x requires NumPy 2.
     "pyarrow>=16.0.0",
     "peft>=0.11.0",
 ]
 video_embedding = [
     "datasets>=2.14.0",
+    "fsspec[http]<=2025.3.0",
     "peft>=0.11.0",
     "decord>=0.6.0",
     "opencv-python>=4.8.0",
@@ -72,10 +76,12 @@ video_embedding = [
 ]
 grpo = [
     "datasets>=2.14.0",
+    "fsspec[http]<=2025.3.0",
     "peft>=0.11.0",
 ]
 opd = [
     "datasets>=2.14.0",
+    "fsspec[http]<=2025.3.0",
     "peft>=0.11.0",
 ]
 xformers = [
@@ -83,6 +89,7 @@ xformers = [
 ]
 all = [
     "datasets>=2.14.0",
+    "fsspec[http]<=2025.3.0",
     # <16 pinned us to a NumPy-1-only build; transformers 5.x requires NumPy 2.
     "pyarrow>=16.0.0",
     "peft>=0.11.0",

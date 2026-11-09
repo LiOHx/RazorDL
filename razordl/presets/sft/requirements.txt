@@ -19,5 +19,6 @@ safetensors>=0.4.0
 tqdm>=4.65.0
 numpy>=1.24.0
 datasets>=2.14.0
+fsspec[http]<=2025.3.0
 pyarrow>=16.0.0
 peft>=0.11.0
