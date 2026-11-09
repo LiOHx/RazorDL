@@ -47,6 +47,8 @@ pre-1.0; APIs may change between minor releases.
 - `docs/testing.md` automated smoke-test instructions.
 - `docs/improvement-plan.md` with the prioritized roadmap.
 - `docs/multi-node.md`.
+- `docs/vllm.md` with the tested vLLM 0.32 / torch 2.13 / Python 3.11
+  environment and the rollout smoke instructions.
 
 ## [0.1.0]
 

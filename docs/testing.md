@@ -54,7 +54,8 @@ Run the SFT flow above once with `save_steps: 5`, `save_ckpt_steps: 10`, `grad_a
 
 ## vLLM rollout smoke (manual)
 
-The project `.venv` does not install vLLM (CUDA-version sensitive).  Use a
+The project `.venv` does not install vLLM (CUDA-version sensitive).  See
+[docs/vllm.md](vllm.md) for the tested baseline and install recipe.  Use a
 separate environment that has vLLM, and point `PYTHONPATH` at the repo if
 RazorDL is not installed there:
 
