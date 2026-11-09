@@ -19,7 +19,7 @@ Compared to `transformers.Trainer` and `verl`, RazorDL lets you customize the tr
 - **Fused Linear CE** -- stream the lm_head cross-entropy tile-by-tile, never materializing the `[B, L, V]` logits (vocab 248K × seq 65K); tune with `fused_linear_tile_size`
 - **Dataset Cache** -- auto-cache tokenized data to disk for instant reload; disable with `cache_tokenized: false`
 - **Streaming JSONL** -- `streaming: true` keeps only byte offsets and tokenizes one line at a time, preserving map-style shuffling/resume
-- **LoRA / PEFT** -- compatible with vLLM key-cleaned adapters
+- **LoRA / PEFT** -- compatible with vLLM key-cleaned adapter files; vLLM LoRA weight sync is not implemented, so use full-model training for GRPO/OPD with vLLM
 - **Activation Offloading** -- async CPU offloading with gradient checkpointing
 - **Experiment management** -- auto-created timestamped experiment dirs with code snapshots, provenance hashes, and pip freeze; `resume_mode: auto` detects code/config changes via hash comparison
 - **Deterministic training** -- centralized `set_seed` for reproducible weight initialization and per-step seeding
@@ -43,15 +43,25 @@ For SFT training dependencies:
 pip install -e ".[sft]"
 ```
 
-For GRPO (reinforcement learning with vLLM rollout) dependencies:
+For GRPO (reinforcement learning) dependencies:
 ```bash
 pip install -e ".[grpo]"
 ```
 
-For OPD (on-policy distillation with vLLM rollout) dependencies:
+For OPD (on-policy distillation) dependencies:
 ```bash
 pip install -e ".[opd]"
 ```
+
+`.[grpo]` / `.[opd]` install `datasets` and `peft` only; they do **not**
+install vLLM.  vLLM pins its own torch/transformers versions, so use a
+separate environment.  See [docs/vllm.md](docs/vllm.md) for the tested
+baseline (Python 3.11, vLLM 0.32.0+cu129, torch 2.13.0+cu129) and the
+install recipe.
+
+If vLLM is unavailable, GRPO/OPD fall back to HuggingFace `generate()` (much
+slower).  The vLLM path currently supports full-model training; LoRA weight
+sync is not implemented.
 
 For video-embedding (contrastive learning) dependencies:
 ```bash
@@ -63,7 +73,7 @@ For xformers attention optimization:
 pip install -e ".[xformers]"
 ```
 
-Install everything:
+Install everything except vLLM (which needs its own environment):
 ```bash
 pip install -e ".[all]"
 ```
@@ -194,15 +204,26 @@ Edit `workgroup.py` to override `_compute_loss()`:
 from razordl.presets.sft import SFTWorkGroup
 
 class MyWorkGroup(SFTWorkGroup):
-    def _compute_loss(self, model, input_dict, labels):
-        # Custom loss logic
+    def _compute_loss(self, model, input_dict, labels, shifted=False):
         output = model(**input_dict)
         logits = output.logits
-        # e.g. add an auxiliary loss term
-        return my_custom_loss(logits, labels)
+        if shifted:
+            # Sequence-parallel path: labels already hold next-token targets.
+            return my_custom_loss(
+                logits.reshape(-1, logits.size(-1)),
+                labels.reshape(-1),
+            )
+        return my_custom_loss(
+            logits[:, :-1].reshape(-1, logits.size(-1)),
+            labels[:, 1:].reshape(-1),
+        )
 ```
 
-The base class handles sequence parallelism, gradient backward, and distributed averaging automatically. You only write the loss.
+The `shifted` keyword is required: `SFTWorkGroup.update_step()` always passes
+it.  The base class handles backward, optimizer stepping, and the default
+distributed token normalization; a custom loss that needs cross-rank token
+averaging should use `razordl.ops.loss.distributed.global_token_denominator`
+like `DistCrossEntropyLoss` does.
 
 ### 4. Custom model loading
 
@@ -243,7 +264,7 @@ checkpointing, and sequence parallelism automatically.
 ```bash
 razordl init my_project --preset sft --mode full
 ```
-Completely self-contained project (~5K lines) with all framework code
+Completely self-contained project (~8K lines) with all framework code
 inlined.  Modify any layer — `src/engine/main.py`, `src/base/trainer.py`,
 `src/ops/parallel/fsdp2.py`, etc.  No dependency on the razordl package.
 
@@ -304,7 +325,7 @@ bash run.sh
 
 ### How it works
 
-razordl uses AST-based dependency analysis to discover exactly which modules your preset needs, copies them, and rewrites all `from razordl.xxx` imports to local imports. The result is a minimal, clean project (~5K lines) containing only the code you need — no examples, no tests, no unrelated presets.
+razordl uses AST-based dependency analysis to discover exactly which modules your preset needs, copies them, and rewrites all `from razordl.xxx` imports to local imports. The result is a minimal, clean project (~8K lines) containing only the code you need — no examples, no tests, no unrelated presets.
 
 ---
 
