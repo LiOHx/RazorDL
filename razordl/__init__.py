@@ -1,6 +1,6 @@
 """RazorDL: A flexible distributed training framework for LLMs and multimodal models."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Lazy imports to avoid pulling in heavy dependencies (tensordict, torch, etc.)
 # when only simple operations (e.g. CLI init) are needed.

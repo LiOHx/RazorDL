@@ -49,3 +49,8 @@ git push origin v0.1.0
 
 Treat v0.1.0 as an alpha tag: APIs may still change, and multi-node / vLLM
 paths are documented but not CI-enforced.
+
+## v0.1.1 (2026-11-09)
+
+Documentation-only follow-up: `AGENTS.md` rename + README clarifications.
+No runtime code changes; v0.1.0 remains the initial alpha release.

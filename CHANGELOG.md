@@ -3,6 +3,20 @@
 All notable changes to RazorDL are documented here.  The project is currently
 pre-1.0; APIs may change between minor releases.
 
+## [0.1.1] - 2026-11-09
+
+Documentation-only follow-up to the initial alpha release.
+
+### Changed
+
+- Renamed every `CLAUDE.md` to `AGENTS.md` (root + 9 nested subtree files) and
+  updated all references in docs, code comments, and tests.
+- Clarified README vLLM setup: `.[grpo]` / `.[opd]` do not install vLLM.
+- Fixed the custom-loss example signature (`shifted` keyword) and documented
+  the distributed-token-normalization contract.
+- Documented the vLLM LoRA weight-sync limitation and corrected the
+  full-project line count (~8K).
+
 ## [0.1.0] - 2026-11-09
 
 Initial alpha release.
