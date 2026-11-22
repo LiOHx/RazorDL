@@ -106,12 +106,32 @@ def build_single_model_config_dict(
     max_grad_norm = d.get("max_grad_norm", max_grad_norm_default)
     grad_accum = d.get("grad_accum", grad_accum_default)
     optimizer_path = d.get("optimizer_path", None)
-    scheduler_path = d.get("scheduler_path", None)
-    if optimizer_path or scheduler_path:
+    if optimizer_path:
         raise NotImplementedError(
-            "optimizer_path/scheduler_path are not implemented: RazorDL currently "
-            "always uses AdamW and no LR scheduler. Remove these keys from config.yaml."
+            "optimizer_path is not implemented: RazorDL always uses AdamW. "
+            "Remove this key from config.yaml."
         )
+    scheduler_path = d.get("scheduler_path", None)
+    if scheduler_path:
+        raise NotImplementedError(
+            "scheduler_path (loading an external scheduler state) is not implemented. "
+            "Use the built-in `lr_scheduler: cosine` setting, or remove this key."
+        )
+
+    lr_scheduler = d.get("lr_scheduler", "none")
+    warmup_steps = d.get("warmup_steps", 0)
+    warmup_ratio = d.get("warmup_ratio", 0.0)
+    min_lr_ratio = d.get("min_lr_ratio", 0.0)
+    total_steps = d.get("total_steps", None)
+    from razordl.core.engine.common.lr_scheduler import validate_scheduler_config
+
+    validate_scheduler_config(
+        lr_scheduler=lr_scheduler,
+        warmup_steps=warmup_steps,
+        warmup_ratio=warmup_ratio,
+        min_lr_ratio=min_lr_ratio,
+        total_steps=total_steps,
+    )
     if d.get("adapter_name"):
         raise NotImplementedError(
             "adapter_name is not implemented: PEFT always uses the 'default' adapter. "
@@ -217,7 +237,13 @@ def build_single_model_config_dict(
                     "max_grad_norm": max_grad_norm,
                     "accumulate_grad_steps": grad_accum,
                 },
-                "scheduler_config": {},
+                "scheduler_config": {
+                    "lr_scheduler": str(lr_scheduler or "none").lower(),
+                    "warmup_steps": warmup_steps,
+                    "warmup_ratio": warmup_ratio,
+                    "min_lr_ratio": min_lr_ratio,
+                    "total_steps": total_steps,
+                },
             },
         },
         "trainer_config": {

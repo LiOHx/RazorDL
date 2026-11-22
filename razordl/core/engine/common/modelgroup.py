@@ -7,6 +7,7 @@ import torch
 from razordl.ops.distributed.utils import is_global_rank0
 from razordl.core.base import logging
 from razordl.core.base.workgroup import BaseModelGroup
+from razordl.core.engine.common.lr_scheduler import build_lr_scheduler, warmup_steps_for
 from razordl.core.engine.common.parallel_backend import build_parallel_backend
 
 logger = logging.getLogger(__name__)
@@ -318,10 +319,151 @@ class ParallelModelGroup(BaseModelGroup):
             raise
 
     def build_scheduler(self):
-        pass
+        """Build the optional LR schedule (``scheduler_config.lr_scheduler``).
+
+        ``total_steps`` may still be unknown here: it depends on the dataset
+        length, ``num_epochs`` and gradient accumulation, which only the
+        trainer can resolve.  The schedule is activated later by
+        ``set_scheduler_total_steps`` (a no-op when no schedule is configured).
+        """
+        self._scheduler_ready = False
+        self.scheduler = build_lr_scheduler(
+            self.optimizer, self.model_group_config.scheduler_config
+        )
+        if (
+            self.scheduler is not None
+            and self.model_group_config.scheduler_config.total_steps is not None
+        ):
+            self._activate_scheduler()
+        return self.scheduler
+
+    def set_scheduler_total_steps(self, total_steps: int):
+        """Trainer hook: resolve the schedule length in optimizer steps."""
+        scheduler_config = self.model_group_config.scheduler_config
+        if str(getattr(scheduler_config, "lr_scheduler", "none") or "none").lower() == "none":
+            return
+        if scheduler_config.total_steps is None:
+            scheduler_config.total_steps = int(total_steps)
+        self._activate_scheduler()
+
+    def _activate_scheduler(self):
+        if getattr(self, "_scheduler_ready", False):
+            return
+        scheduler_config = self.model_group_config.scheduler_config
+        if scheduler_config.total_steps is None:
+            raise RuntimeError(
+                f"[{self.model_group_name}] lr_scheduler={scheduler_config.lr_scheduler!r} "
+                "needs total_steps, but the trainer never provided it. Run through "
+                "`razordl train`, or set scheduler_config.total_steps explicitly."
+            )
+        warmup_steps = warmup_steps_for(
+            total_steps=scheduler_config.total_steps,
+            warmup_steps=scheduler_config.warmup_steps,
+            warmup_ratio=scheduler_config.warmup_ratio,
+        )
+        if warmup_steps > int(scheduler_config.total_steps):
+            raise ValueError(
+                f"[{self.model_group_name}] warmup_steps={warmup_steps} exceeds the "
+                f"{scheduler_config.total_steps} optimizer steps this run will take; "
+                "lower warmup_steps / warmup_ratio."
+            )
+        # Rebuild now that total_steps is known: LambdaLR evaluates its lambda
+        # inside __init__, so the warmup_ratio / cosine branches would bake in
+        # a wrong first-step LR if built before the total was resolved.
+        self.scheduler = build_lr_scheduler(self.optimizer, scheduler_config)
+        self._scheduler_ready = True
+        self._resume_scheduler_checkpoint()
+        if self.local_rank == 0:
+            logger.info(
+                "[%s] LR scheduler: %s | total_steps=%s warmup_steps=%s min_lr_ratio=%s",
+                self.model_group_name,
+                scheduler_config.lr_scheduler,
+                scheduler_config.total_steps,
+                warmup_steps,
+                scheduler_config.min_lr_ratio,
+            )
+
+    def _resume_scheduler_checkpoint(self):
+        scheduler = self.scheduler
+        if scheduler is None:
+            return
+        if self.config.trainer_config.init_from:
+            # A fork starts a fresh schedule from step 0.
+            return
+
+        path = self._find_checkpoint_file("scheduler.pt")
+        if path:
+            try:
+                state = torch.load(path, map_location="cpu")
+                scheduler.load_state_dict(state)
+            except Exception:
+                logger.exception("[RESUME] Failed to load LR scheduler from %s", path)
+                raise
+            # The optimizer's param-group LR is not part of the scheduler
+            # state.  Recompute it at the restored step with the CURRENT
+            # schedule instead of trusting the saved `_last_lr`: total_steps
+            # may have changed (e.g. more epochs requested on resume), and
+            # the old value would pin the next update to the old curve.
+            import warnings
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="To get the last learning rate")
+                restored_lrs = scheduler.get_lr()
+            for group, lr in zip(self.optimizer.param_groups, restored_lrs):
+                group["lr"] = lr
+            scheduler._last_lr = list(restored_lrs)
+            if self.local_rank == 0:
+                logger.info(
+                    "[RESUME] LR scheduler restored (last_epoch=%s, lr=%.3e)",
+                    scheduler.last_epoch,
+                    self.optimizer.param_groups[0]["lr"],
+                )
+            return
+
+        completed = self._completed_optimizer_steps()
+        if completed <= 0:
+            return
+        # Checkpoint written before the scheduler existed: reconstruct the
+        # schedule position instead of silently restarting at the peak LR.
+        import warnings
+
+        with warnings.catch_warnings():
+            # Fast-forwarding is a scheduler-only replay; there is no
+            # optimizer step to pair with each call.
+            warnings.filterwarnings("ignore", message="Detected call of `lr_scheduler.step")
+            for _ in range(completed):
+                scheduler.step()
+        if self.local_rank == 0:
+            logger.warning(
+                "[RESUME] No scheduler.pt in checkpoint; fast-forwarded the LR "
+                "schedule to optimizer step %s (lr=%.3e)",
+                completed,
+                self.optimizer.param_groups[0]["lr"],
+            )
+
+    def _completed_optimizer_steps(self) -> int:
+        """Optimizer steps completed by the checkpoint being resumed, if any."""
+        trainer_config = getattr(self.config, "trainer_config", None)
+        ckpt_dir = getattr(trainer_config, "resume_checkpoint_dir", None)
+        if not ckpt_dir:
+            return 0
+        name = os.path.basename(os.path.normpath(ckpt_dir))
+        if not name.startswith("checkpoint_"):
+            return 0
+        try:
+            micro_step = int(name.split("_")[1])
+        except (IndexError, ValueError):
+            return 0
+        accumulate = int(
+            self.model_group_config.optimizer_config.accumulate_grad_steps or 1
+        )
+        return max(0, micro_step // max(1, accumulate))
 
     def save_scheduler(self, checkpoint_dir):
-        pass
+        if self.scheduler is None or not is_global_rank0():
+            return
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        torch.save(self.scheduler.state_dict(), os.path.join(checkpoint_dir, "scheduler.pt"))
 
     def save_model_and_processor(self, checkpoint_dir: str):
         if not self.is_trainable:
@@ -344,6 +486,9 @@ class ParallelModelGroup(BaseModelGroup):
         accumulate_grad_steps = self.model_group_config.optimizer_config.accumulate_grad_steps
         grad_norm = 0.0
         grad_overflow = False
+        # The LR in effect for this update (also the next applied LR when the
+        # accumulation gate skips this micro-batch).
+        lr = self.optimizer.param_groups[0]["lr"]
         if step % accumulate_grad_steps == 0 or step == -1:
             self.parallel_backend.load_for_optimizer_step(self.model, self.optimizer)
 
@@ -369,10 +514,20 @@ class ParallelModelGroup(BaseModelGroup):
             else:
                 self.optimizer.step()
 
+            if self.scheduler is not None:
+                if not getattr(self, "_scheduler_ready", False):
+                    raise RuntimeError(
+                        "LR scheduler is enabled but total_steps was never resolved; "
+                        "the trainer must call set_scheduler_total_steps()."
+                    )
+                # Once per applied update, never per micro-batch: the
+                # schedule counts optimizer steps, not accumulated batches.
+                self.scheduler.step()
+
             self.optimizer.zero_grad()
             self.parallel_backend.offload_after_optimizer_step(self.model, self.optimizer)
 
-        return dict(grad_norm=grad_norm, grad_overflow=grad_overflow)
+        return dict(grad_norm=grad_norm, grad_overflow=grad_overflow, lr=lr)
 
     def trainer_context(self):
         return self.parallel_backend.trainer_context(self.model, self.optimizer)

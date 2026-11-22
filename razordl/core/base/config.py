@@ -118,7 +118,17 @@ class BaseOptimizerConfig(DictSerializable):
 
 @dataclass
 class BaseSchedulerConfig(DictSerializable):
-    """Reserved for future LR-scheduler configuration (currently unused)."""
+    """Optional LR schedule on top of ``optimizer_config.learning_rate``.
+
+    Defaults keep a constant learning rate (pre-scheduler behaviour).  Set
+    ``lr_scheduler: cosine`` to enable linear warmup + cosine decay.
+    """
+
+    lr_scheduler: str = "none"          # "none" | "cosine"
+    warmup_steps: int = 0               # optimizer steps of linear warmup
+    warmup_ratio: float = 0.0           # alternative: fraction of total steps
+    min_lr_ratio: float = 0.0           # cosine floor: lr * min_lr_ratio
+    total_steps: int | None = None      # auto-resolved from the dataloader when None
 
 
 

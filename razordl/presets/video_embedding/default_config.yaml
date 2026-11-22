@@ -45,6 +45,13 @@ grad_accum: 8                                   # 梯度累积
 weight_decay: 0.01                              # 权重衰减
 max_grad_norm: 1.0                              # 梯度裁剪
 
+# ---- LR Schedule (默认关闭) ----
+lr_scheduler: none                              # none=恒定学习率(默认) | cosine=线性warmup+余弦退火
+warmup_steps: 0                                 # 线性warmup的优化器步数。0=不启用；与warmup_ratio二选一
+warmup_ratio: 0.0                               # 用总优化步数的比例做warmup（warmup_steps=0时生效）
+min_lr_ratio: 0.0                               # cosine末端学习率 = lr * min_lr_ratio
+# total_steps: null                             # 手动指定总优化步数；null=从dataloader自动推导
+
 
 # ============================================================
 # [不常用] 默认值即可，知道在哪就行

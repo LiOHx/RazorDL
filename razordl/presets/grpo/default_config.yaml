@@ -39,6 +39,13 @@ weight_decay: 0.01
 max_grad_norm: 1.0
 grad_accum: 8
 
+# LR schedule (disabled by default)
+lr_scheduler: none          # none | cosine
+warmup_steps: 0             # optimizer steps of linear warmup (mutually exclusive with warmup_ratio)
+warmup_ratio: 0.0           # fraction of total optimizer steps used for warmup
+min_lr_ratio: 0.0           # cosine floor: lr * min_lr_ratio
+# total_steps: null         # override; null = derived from the dataloader
+
 # Training
 num_epochs: 2
 num_workers: 2

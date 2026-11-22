@@ -20,6 +20,7 @@ Compared to `transformers.Trainer` and `verl`, RazorDL lets you customize the tr
 - **Dataset Cache** -- auto-cache tokenized data to disk for instant reload; disable with `cache_tokenized: false`
 - **Streaming JSONL** -- `streaming: true` keeps only byte offsets and tokenizes one line at a time, preserving map-style shuffling/resume
 - **LoRA / PEFT** -- compatible with vLLM key-cleaned adapter files; vLLM LoRA weight sync is not implemented, so use full-model training for GRPO/OPD with vLLM
+- **LR scheduling** -- optional linear warmup + cosine decay (`lr_scheduler: cosine`, `warmup_steps` / `warmup_ratio`, `min_lr_ratio`); disabled by default (constant LR)
 - **Activation Offloading** -- async CPU offloading with gradient checkpointing
 - **Experiment management** -- auto-created timestamped experiment dirs with code snapshots, provenance hashes, and pip freeze; `resume_mode: auto` detects code/config changes via hash comparison
 - **Deterministic training** -- centralized `set_seed` for reproducible weight initialization and per-step seeding
@@ -141,6 +142,17 @@ lr: 5.0e-5
 lora_r: 8
 num_epochs: 3
 ```
+
+The learning rate is constant by default.  To add warmup + cosine decay:
+
+```yaml
+lr_scheduler: cosine
+warmup_ratio: 0.03     # 3% of optimizer steps (or use warmup_steps: 100)
+min_lr_ratio: 0.1      # decay to 10% of the peak LR
+```
+
+The total number of optimizer steps is derived automatically from the dataset,
+`num_epochs` and `grad_accum`; set `total_steps` only to override it.
 
 ### 4. Launch training
 

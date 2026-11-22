@@ -17,6 +17,7 @@ from tokenizers.models import WordLevel
 from tokenizers.pre_tokenizers import Whitespace
 from transformers import PreTrainedTokenizerFast, Qwen3Config, Qwen3ForCausalLM
 
+from razordl.core.engine.common.lr_scheduler import lr_multiplier
 from razordl.core.engine.single_model.trainer import Trainer
 from razordl.ops.hardware import device as hw_device
 from razordl.presets.sft import SFTConfig, SFTCollator, SFTDataset, SFTWorkGroup
@@ -214,6 +215,59 @@ def test_resume_from_checkpoint_continues(tmp_path, monkeypatch):
 
     assert [row["step"] for row in _step_info(exp_dir)] == [1, 2, 3, 4]
     assert (exp_dir / "checkpoint_000004").is_dir()
+
+
+def test_cosine_schedule_lr_and_resume(tmp_path, monkeypatch):
+    """Cosine + warmup advances per optimizer step and survives a resume."""
+    model_dir, tokenizer_dir = _write_tiny_model_and_tokenizer(tmp_path)
+    data_dir = tmp_path / "data"
+    _write_data(data_dir)
+    _prepare_runtime(monkeypatch)
+
+    exp_dir = tmp_path / "exp"
+    flat = _flat_config(
+        model_dir,
+        tokenizer_dir,
+        data_dir,
+        tmp_path / "outputs",
+        lr=1e-3,
+        lr_scheduler="cosine",
+        warmup_steps=1,
+        save_ckpt_steps=2,
+    )
+    _run_training(flat, exp_dir)
+
+    rows = _step_info(exp_dir)
+    assert [row["step"] for row in rows] == [1, 2, 3, 4]
+    expected = [
+        lr_multiplier(i, total_steps=4, warmup_steps=1) * 1e-3 for i in range(4)
+    ]
+    assert [row["model_group"]["lr"] for row in rows] == pytest.approx(expected)
+    assert (
+        exp_dir / "checkpoint_000004" / "workgroup" / "model_group" / "scheduler.pt"
+    ).is_file()
+
+    resume_flat = dict(flat)
+    resume_flat.update(
+        {
+            "resume_mode": "manual",
+            "resume_from": str(exp_dir),
+            "num_epochs": 2,
+        }
+    )
+    _run_training(resume_flat, exp_dir)
+
+    rows = _step_info(exp_dir)
+    assert [row["step"] for row in rows] == list(range(1, 9))
+    assert [row["model_group"]["lr"] for row in rows[:4]] == pytest.approx(expected)
+    # The schedule length grew to 8 steps, so the restored LR is recomputed
+    # on the new curve rather than pinned to the old end-of-run value.
+    expected_resumed = [
+        lr_multiplier(i, total_steps=8, warmup_steps=1) * 1e-3 for i in range(4, 8)
+    ]
+    assert [row["model_group"]["lr"] for row in rows[4:]] == pytest.approx(
+        expected_resumed
+    )
 
 
 def test_init_from_fork_starts_at_step_zero(tmp_path, monkeypatch):

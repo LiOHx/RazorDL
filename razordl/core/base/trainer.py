@@ -116,6 +116,7 @@ class BaseTrainer():
         self.train_collator = None
         self.prepare_data_and_workgroup()
         self.data_loader = self.build_data_loader()
+        self._configure_lr_scheduler()
     
     
     def _is_complete_checkpoint(self, ckpt_dir: str, require_complete_marker: bool = True) -> bool:
@@ -257,6 +258,50 @@ class BaseTrainer():
             data_loader, add_dist_sampler=False, move_to_device=False
         )
         return loader
+
+
+    def _configure_lr_scheduler(self):
+        """Resolve the LR schedule length and hand it to every model group.
+
+        The schedule lives on the model groups, but only the trainer knows
+        how many optimizer steps the run will take (dataset length, epochs
+        and gradient accumulation).  Presets opt in through config alone.
+        """
+        worker_group_config = getattr(self.config, "worker_group_config", None)
+        if worker_group_config is None:
+            return
+        scheduler_config = worker_group_config.model_group_config.scheduler_config
+        if str(getattr(scheduler_config, "lr_scheduler", "none") or "none").lower() == "none":
+            return
+        if self.data_loader is None:
+            raise RuntimeError(
+                "lr_scheduler is enabled but no dataloader exists; the trainer "
+                "cannot determine total_steps."
+            )
+
+        completed_micro = int(getattr(self.data_loader.resume_state, "completed_step", 0))
+        total_micro = int(len(self.data_loader)) + completed_micro
+        accumulate = max(
+            1,
+            int(worker_group_config.model_group_config.optimizer_config.accumulate_grad_steps or 1),
+        )
+        # Mirrors ModelGroup.update_step: an update happens on micro-steps
+        # that are multiples of accumulate_grad_steps, so the tail that never
+        # reaches a multiple contributes no scheduler step either.
+        total_optimizer_steps = total_micro // accumulate
+        if total_optimizer_steps <= 0:
+            raise ValueError(
+                f"lr_scheduler is enabled but the run has {total_micro} micro-batch "
+                f"step(s) with grad_accum={accumulate}, i.e. no optimizer step. "
+                "Lower grad_accum or provide more data."
+            )
+
+        for name in dir(self):
+            if name.startswith("__"):
+                continue
+            workgroup = getattr(self, name)
+            if isinstance(workgroup, BaseWorkGroup):
+                workgroup.set_scheduler_total_steps(total_optimizer_steps)
 
 
     def save_model_and_processor(self, checkpoint_dir: str):

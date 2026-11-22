@@ -3,6 +3,17 @@
 All notable changes to RazorDL are documented here.  The project is currently
 pre-1.0; APIs may change between minor releases.
 
+## [Unreleased]
+
+### Added
+
+- Optional learning-rate schedule (`scheduler_config` / flat keys
+  `lr_scheduler`, `warmup_steps`, `warmup_ratio`, `min_lr_ratio`,
+  `total_steps`): linear warmup + cosine decay, off by default.  The total
+  number of optimizer steps is derived from the dataloader, epochs and
+  gradient accumulation; `scheduler.pt` is checkpointed and restored.
+- Step metrics now include the active `lr`.
+
 ## [0.1.1] - 2026-11-09
 
 Documentation-only follow-up to the initial alpha release.

@@ -58,6 +58,10 @@ class BaseModelGroup(ABC):
     def save_scheduler(self, checkpoint_dir: str):
         pass
 
+    def set_scheduler_total_steps(self, total_steps: int):
+        """Hook for model groups with an LR schedule (default: no-op)."""
+        pass
+
     def _find_checkpoint_file(self, filename: str) -> str | None:
         """Find *filename* inside the resume checkpoint directory tree.
 
@@ -150,6 +154,15 @@ class BaseWorkGroup(ABC):
             if dist.is_available() and dist.is_initialized():
                 dist.barrier()
             model_group.save_checkpoint(model_group_checkpoint_dir)
+
+    def set_scheduler_total_steps(self, total_steps: int):
+        """Forward the resolved schedule length to every model group."""
+        for name in dir(self):
+            if name.startswith('__'):
+                continue
+            model_group = getattr(self, name)
+            if isinstance(model_group, BaseModelGroup):
+                model_group.set_scheduler_total_steps(total_steps)
 
 
 
