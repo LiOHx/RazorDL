@@ -96,7 +96,22 @@ def build_single_model_config_dict(
     lora_r = d.get("lora_r", 8)
     lora_alpha = d.get("lora_alpha", 16)
     lora_dropout = d.get("lora_dropout", 0.05)
-    lora_target_modules = d.get("lora_target_modules", ["q_proj", "v_proj", "k_proj", "o_proj"])
+    if "lora_target" in d and "lora_target_modules" in d:
+        raise ValueError(
+            "Set either 'lora_target' (LLaMA-Factory spelling) or "
+            "'lora_target_modules', not both."
+        )
+    from razordl.ops.model.lora_targets import (
+        normalize_lora_exclude_modules,
+        normalize_lora_targets,
+    )
+
+    lora_target_modules = normalize_lora_targets(
+        d.get("lora_target_modules", d.get("lora_target", None))
+    )
+    lora_exclude_modules = normalize_lora_exclude_modules(
+        d.get("lora_exclude_modules", None)
+    )
     adapter_path = d.get("adapter_path", None)
     modules_to_save = d.get("modules_to_save", None)
     task_type = d.get("task_type", task_type_default)
@@ -227,6 +242,7 @@ def build_single_model_config_dict(
                         "lora_alpha": lora_alpha,
                         "lora_dropout": lora_dropout,
                         "lora_target_modules": lora_target_modules,
+                        "lora_exclude_modules": lora_exclude_modules,
                         "modules_to_save": modules_to_save,
                         "task_type": task_type,
                     },

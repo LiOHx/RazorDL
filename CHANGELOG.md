@@ -13,6 +13,11 @@ pre-1.0; APIs may change between minor releases.
   number of optimizer steps is derived from the dataloader, epochs and
   gradient accumulation; `scheduler.pt` is checkpointed and restored.
 - Step metrics now include the active `lr`.
+- `lora_target_modules: all-linear` (plus the LLaMA-Factory `lora_target: all`
+  alias) expands LoRA to every Linear/Conv1D layer except the output head,
+  covering MLP and Qwen3.5 hybrid linear-attention projections.
+  `lora_exclude_modules` (regex string or name list) keeps selected submodules
+  frozen, e.g. a multimodal vision tower.  Requires `peft>=0.12.0`.
 
 ## [0.1.1] - 2026-11-09
 

@@ -25,11 +25,12 @@ use_adapter: true                       # 是否启用 LoRA
 lora_r: 8                               # LoRA rank
 lora_alpha: 16                          # 缩放因子。通常设成 2 * lora_r
 lora_dropout: 0.05                      # dropout
-lora_target_modules:                    # 加 LoRA 的层
+lora_target_modules:                    # 加 LoRA 的层；all-linear=所有线性层(排除 lm_head)
   - q_proj
   - v_proj
   - k_proj
   - o_proj
+# lora_exclude_modules: null            # all-linear 时排除的模块（正则或列表），如 ".*visual.*"
 
 # ---- Optimizer ----
 grad_accum: 2                           # 梯度累积

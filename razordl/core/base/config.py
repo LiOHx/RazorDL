@@ -81,7 +81,11 @@ class BaseAdapterConfig(DictSerializable):
     lora_r: int = 8
     lora_alpha: int = 16
     lora_dropout: float = 0.05
-    lora_target_modules: list = field(default_factory=lambda: ["q_proj", "v_proj", "k_proj", "o_proj"])
+    # list of module names, or the PEFT wildcard "all-linear" (every
+    # Linear/Conv1D except the output head).  flat_config normalises the
+    # "all" alias and comma-separated strings into this form.
+    lora_target_modules: list | str = field(default_factory=lambda: ["q_proj", "v_proj", "k_proj", "o_proj"])
+    lora_exclude_modules: list | str | None = None  # PEFT exclude_modules (regex string or names)
     modules_to_save: list[str] | None = None
     task_type: str = None  # PEFT task type, e.g. "CAUSAL_LM", "FEATURE_EXTRACTION". None = PEFT auto-detect
 

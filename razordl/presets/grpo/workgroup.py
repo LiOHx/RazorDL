@@ -234,10 +234,13 @@ def asdict_peft(peft_config) -> dict:
     """Convert a PEFT LoraConfig to a plain dict (compatible with vLLM)."""
     if not peft_config:
         return {}
+    target_modules = getattr(peft_config, "target_modules", [])
+    if isinstance(target_modules, (list, tuple, set)):
+        target_modules = list(target_modules)
     return {
         "r": getattr(peft_config, "r", 8),
         "lora_alpha": getattr(peft_config, "lora_alpha", 16),
-        "target_modules": list(getattr(peft_config, "target_modules", [])),
+        "target_modules": target_modules,
         "bias": getattr(peft_config, "bias", "none"),
         "task_type": str(getattr(peft_config, "task_type", "CAUSAL_LM")),
         "lora_dropout": getattr(peft_config, "lora_dropout", 0.0),

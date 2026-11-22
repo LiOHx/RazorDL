@@ -139,6 +139,12 @@ def load_lora_adapter_compatible(model, adapter_path, adapter_config, local_rank
         import torch.nn as nn
         PEFT_SUPPORTED = (nn.Linear, nn.Embedding, nn.Conv1d, nn.Conv2d, nn.Conv3d)
 
+        # "all-linear" (and any other regex string) is resolved by PEFT
+        # against the actual model; unwrapping it here would turn it into
+        # a list of characters.
+        if isinstance(target_modules, str):
+            return target_modules
+
         resolved = list(target_modules)
         for i, target in enumerate(resolved):
             needs_unwrap = False
@@ -170,6 +176,9 @@ def load_lora_adapter_compatible(model, adapter_path, adapter_config, local_rank
             modules_to_save=adapter_config.modules_to_save,
             bias="none",
         )
+        exclude_modules = getattr(adapter_config, "lora_exclude_modules", None)
+        if exclude_modules:
+            kwargs["exclude_modules"] = exclude_modules
         if adapter_config.task_type is not None:
             kwargs["task_type"] = adapter_config.task_type
         return LoraConfig(**kwargs)
@@ -248,6 +257,9 @@ def load_lora_adapter_compatible(model, adapter_path, adapter_config, local_rank
             return get_peft_model(model, lora_cfg)
         except ValueError as e:
             if "is not supported" not in str(e):
+                raise
+            if isinstance(adapter_config.lora_target_modules, str):
+                # all-linear / regex targets cannot be rewritten by suffix.
                 raise
             # Fallback: append .linear to each target for models using
             # custom linear wrappers (e.g. Gemma4ClippableLinear).
